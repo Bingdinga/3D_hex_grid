@@ -24,9 +24,15 @@
 - Type messages and press Enter or click Send
 - Messages will be visible to all users in the room
 
-### Mobile Controls
+### Controls
 
-- **Rotating the view**: Swipe with one finger
-- **Zooming**: Pinch with two fingers
-- **Selecting a hex**: Tap on a hexagon
+#### Desktop Controls
+- **Selecting hexagons**: Left-click on a hexagon to interact with it
+- **Rotating/panning the view**: Right-click and drag to rotate the camera
+- **Zooming**: Use the mouse wheel to zoom in and out
+
+#### Mobile Controls
+- **Selecting hexagons**: Tap on a hexagon (a clean tap, not a drag)
+- **Rotating the view**: Swipe with one finger to rotate the camera
+- **Zooming**: Pinch with two fingers to zoom in and out
 - **Fullscreen mode**: For the best experience on mobile devices, add the app to your home screen or use your browser's fullscreen mode

@@ -142,12 +142,18 @@ class App {
       }
     });
     
-    // Set up click handling
+    // Set up click handling specifically for left-click on desktop
     window.addEventListener('click', (event) => {
+      // Only proceed if it's a left-click (button 0)
+      if (event.button !== 0) return;
+      
       // Make sure the click is not on a UI element
       if (event.target.closest('#ui-overlay')) return;
       
-      this.handleHexClick();
+      // Only process if we're not in a drag operation
+      if (!this.controls.wasDragging) {
+        this.handleHexClick();
+      }
     });
     
     // Set up touch tap handling for mobile
@@ -162,7 +168,8 @@ class App {
         this.mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
         this.mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
         
-        // Check if this was a tap, not a drag (movement less than threshold)
+        // Check if this was a tap, not a drag 
+        // The threshold is checked in touchmove and stored in wasDragging
         if (!this.controls.wasDragging) {
           this.handleHexClick();
         }
@@ -199,11 +206,51 @@ class App {
       this.controls.screenSpacePanning = false;
       this.controls.maxPolarAngle = Math.PI / 2;
       
+      // Configure OrbitControls for our specific control scheme
+      this.controls.mouseButtons = {
+        LEFT: null,  // Disable left-click for OrbitControls
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.ROTATE  // Right-click to rotate/pan
+      };
+      
       // Add touch gesture recognition for OrbitControls
       this.controls.touches = {
-        ONE: THREE.TOUCH.ROTATE,
-        TWO: THREE.TOUCH.DOLLY_PAN
+        ONE: THREE.TOUCH.ROTATE,  // One finger rotates
+        TWO: THREE.TOUCH.DOLLY_PAN  // Two fingers for zoom/pan
       };
+      
+      // Add custom properties to track dragging
+      this.controls.wasDragging = false;
+      
+      // Override the update method to add our custom tracking
+      const originalUpdate = this.controls.update.bind(this.controls);
+      this.controls.update = () => {
+        originalUpdate();
+        
+        // Reset dragging state on each frame if not actively moving
+        if (!this.controls.isMouseMoving && Date.now() - this.controls.lastMoveTime > 300) {
+          this.controls.wasDragging = false;
+        }
+      };
+      
+      // Add event listeners to track mouse movement for drag detection
+      this.renderer.domElement.addEventListener('mousedown', () => {
+        this.controls.isMouseDown = true;
+        this.controls.lastMoveTime = Date.now();
+      });
+      
+      this.renderer.domElement.addEventListener('mousemove', () => {
+        if (this.controls.isMouseDown) {
+          this.controls.isMouseMoving = true;
+          this.controls.wasDragging = true;
+          this.controls.lastMoveTime = Date.now();
+        }
+      });
+      
+      window.addEventListener('mouseup', () => {
+        this.controls.isMouseDown = false;
+        this.controls.isMouseMoving = false;
+      });
       
       return;
     }
@@ -212,12 +259,20 @@ class App {
     
     // Simple camera controls
     this.controls = {
-      update: function() {},  // Empty update function for animation loop
+      update: function() {
+        // Reset dragging state on each frame if not actively moving
+        if (!this.isMouseMoving && !this.isTouching && Date.now() - this.lastMoveTime > 300) {
+          this.wasDragging = false;
+        }
+      },
       enabled: true,
       isMouseDown: false,
+      isRightMouseDown: false,
+      isMouseMoving: false,
       isTouching: false,
       wasDragging: false,
-      dragThreshold: 10,
+      dragThreshold: 5,  // Lower threshold for better distinction between tap and drag
+      lastMoveTime: 0,
       lastMousePosition: { x: 0, y: 0 },
       lastTouchPosition: { x: 0, y: 0 },
       touchStartPosition: { x: 0, y: 0 },
@@ -242,28 +297,55 @@ class App {
     // Initial camera position update
     this.controls.updateCameraPosition(this.camera);
     
-    // Mouse down event
+    // Mouse down event - specifically track right mouse button for panning
     this.renderer.domElement.addEventListener('mousedown', (event) => {
-      if (event.button === 0) { // Left mouse button
-        this.controls.isMouseDown = true;
+      // Button 2 is right mouse button
+      if (event.button === 2) {
+        this.controls.isRightMouseDown = true;
         this.controls.lastMousePosition = {
           x: event.clientX,
           y: event.clientY
         };
-        
-        // Prevent default behavior
         event.preventDefault();
+      } else if (event.button === 0) {
+        // Left button - just track for drag detection, don't actually do anything
+        this.controls.isMouseDown = true;
+        this.controls.wasDragging = false;
+        this.controls.lastMousePosition = {
+          x: event.clientX,
+          y: event.clientY
+        };
       }
     });
     
     // Mouse up event
-    window.addEventListener('mouseup', () => {
-      this.controls.isMouseDown = false;
+    window.addEventListener('mouseup', (event) => {
+      if (event.button === 2) {
+        this.controls.isRightMouseDown = false;
+      } else if (event.button === 0) {
+        this.controls.isMouseDown = false;
+      }
+      
+      this.controls.isMouseMoving = false;
     });
     
-    // Mouse move event for rotation
+    // Mouse move event for rotation (but only on right-click)
     window.addEventListener('mousemove', (event) => {
-      if (this.controls.isMouseDown && this.controls.enabled) {
+      // Track if we're moving the mouse while button is down (for drag detection)
+      if (this.controls.isMouseDown) {
+        const deltaX = Math.abs(event.clientX - this.controls.lastMousePosition.x);
+        const deltaY = Math.abs(event.clientY - this.controls.lastMousePosition.y);
+        
+        // If there's significant movement, consider it a drag
+        if (deltaX > this.controls.dragThreshold || deltaY > this.controls.dragThreshold) {
+          this.controls.wasDragging = true;
+          this.controls.isMouseMoving = true;
+          this.controls.lastMoveTime = Date.now();
+        }
+      }
+      
+      // Only respond to movement if right mouse button is down (for camera control)
+      if (this.controls.isRightMouseDown && this.controls.enabled) {
         // Calculate deltas
         const deltaX = event.clientX - this.controls.lastMousePosition.x;
         const deltaY = event.clientY - this.controls.lastMousePosition.y;
@@ -282,6 +364,9 @@ class App {
           x: event.clientX,
           y: event.clientY
         };
+        
+        this.controls.isMouseMoving = true;
+        this.controls.lastMoveTime = Date.now();
       }
     });
     
@@ -292,7 +377,7 @@ class App {
       if (event.touches.length === 1) {
         // Single touch - for rotation
         this.controls.isTouching = true;
-        this.controls.wasDragging = false;
+        this.controls.wasDragging = false; // Reset drag flag on new touch
         const touch = event.touches[0];
         this.controls.lastTouchPosition = {
           x: touch.clientX,
@@ -302,10 +387,12 @@ class App {
           x: touch.clientX,
           y: touch.clientY
         };
+        this.controls.lastMoveTime = Date.now();
       } 
       else if (event.touches.length === 2) {
         // Two touches - for pinch zoom
         this.controls.isTouching = true;
+        this.controls.wasDragging = true; // Always consider multi-touch as a drag
         const touch1 = event.touches[0];
         const touch2 = event.touches[1];
         
@@ -313,6 +400,7 @@ class App {
         const dx = touch1.clientX - touch2.clientX;
         const dy = touch1.clientY - touch2.clientY;
         this.controls.pinchStartDistance = Math.sqrt(dx * dx + dy * dy);
+        this.controls.lastMoveTime = Date.now();
       }
     }, { passive: false });
     
@@ -350,6 +438,8 @@ class App {
             x: touch.clientX,
             y: touch.clientY
           };
+          
+          this.controls.lastMoveTime = Date.now();
         } 
         else if (event.touches.length === 2) {
           // Two-finger pinch-zoom
@@ -375,6 +465,7 @@ class App {
           
           // Mark as dragging to prevent click after pinch
           this.controls.wasDragging = true;
+          this.controls.lastMoveTime = Date.now();
         }
       }
     }, { passive: false });
@@ -384,7 +475,8 @@ class App {
       event.preventDefault();
       this.controls.isTouching = false;
       
-      // Keep wasDragging flag until next touchstart
+      // We'll maintain the wasDragging flag briefly to prevent accidental taps
+      // It will be reset by the update method after a short delay
     }, { passive: false });
     
     // Mouse wheel for zoom
@@ -403,6 +495,11 @@ class App {
       // Prevent default scrolling behavior
       event.preventDefault();
     }, { passive: false });
+    
+    // Disable context menu to allow right-click dragging
+    this.renderer.domElement.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+    });
   }
   
   /**
@@ -433,9 +530,32 @@ class App {
       this.ui.updateRoomDisplay(roomCode);
       
       // Apply the existing room state to our grid
-      Object.entries(state).forEach(([hexId, hexState]) => {
-        this.hexGrid.updateHexState(hexId, hexState);
-      });
+      if (state && Object.keys(state).length > 0) {
+        console.log('Applying existing room state with', Object.keys(state).length, 'hexes');
+        
+        // Apply in batches to avoid UI freezing
+        const hexIds = Object.keys(state);
+        const batchSize = 10;
+        
+        // Function to process a batch
+        const processBatch = (startIndex) => {
+          const endIndex = Math.min(startIndex + batchSize, hexIds.length);
+          
+          for (let i = startIndex; i < endIndex; i++) {
+            const hexId = hexIds[i];
+            const hexState = state[hexId];
+            this.hexGrid.updateHexState(hexId, hexState);
+          }
+          
+          // Process next batch if there are more hexes
+          if (endIndex < hexIds.length) {
+            setTimeout(() => processBatch(endIndex), 10);
+          }
+        };
+        
+        // Start processing batches
+        processBatch(0);
+      }
     });
     
     this.socketManager.setRoomErrorCallback((error) => {
@@ -461,11 +581,10 @@ class App {
     if (selectedHex) {
       console.log('Hex clicked:', selectedHex);
       
-      // In a real app, you might have different action types
-      // For now, we'll just change the color and height
+      // Always generate a new random color and height for the clicked hex
       const action = {
         color: this.getRandomColor(),
-        height: Math.random() * 3
+        height: 0.5 + Math.random() * 2.5 // Random height between 0.5 and 3
       };
       
       // Send action to server
@@ -501,8 +620,13 @@ class App {
       this.controls.update();
     }
     
-    // Update hex hover state
-    this.hexGrid.handleMouseMove(this.mouse, this.camera);
+    // Check if we're currently dragging to avoid hover effects
+    const isDragging = this.controls.isRightMouseDown || 
+                      this.controls.wasDragging || 
+                      (this.controls.isTouching && this.controls.wasDragging);
+    
+    // Update hex hover state - pass dragging state to prevent hover during camera movement
+    this.hexGrid.handleMouseMove(this.mouse, this.camera, isDragging);
     
     // Render
     this.renderer.render(this.scene, this.camera);

@@ -103,8 +103,19 @@ class HexGrid {
    * Handle mouse/touch movement for hex highlighting
    * @param {THREE.Vector2} pointerPosition - Normalized mouse/touch position
    * @param {THREE.Camera} camera - Current camera
+   * @param {boolean} isDragging - Whether we are currently in a drag operation
    */
-  handleMouseMove(pointerPosition, camera) {
+  handleMouseMove(pointerPosition, camera, isDragging = false) {
+    // Skip hover effects completely for mobile devices and during dragging
+    if (this.detectMobile() || isDragging) {
+      // Clear any existing hover state
+      if (this.hoverHex && this.hoverHex !== this.selectedHex) {
+        this.hoverHex.material = this.defaultMaterial.clone();
+        this.hoverHex = null;
+      }
+      return null;
+    }
+    
     this.raycaster.setFromCamera(pointerPosition, camera);
     
     // Find intersections
@@ -112,15 +123,15 @@ class HexGrid {
     
     // Clear previous hover
     if (this.hoverHex && this.hoverHex !== this.selectedHex) {
-      this.hoverHex.material = this.defaultMaterial;
+      this.hoverHex.material = this.defaultMaterial.clone();
     }
     
-    // Set new hover
+    // Set new hover - but only on desktop
     if (intersects.length > 0) {
       const hex = intersects[0].object;
       
       if (hex !== this.selectedHex) {
-        hex.material = this.hoverMaterial;
+        hex.material = this.hoverMaterial.clone();
         this.hoverHex = hex;
       }
       
@@ -149,31 +160,20 @@ class HexGrid {
     // Find intersections
     const intersects = this.raycaster.intersectObjects(Object.values(this.hexMeshes));
     
-    // Clear previous selection
+    // Clear previous selection visual (but don't change the selection reference yet)
     if (this.selectedHex) {
-      this.selectedHex.material = this.defaultMaterial;
+      if (this.selectedHex === this.hoverHex) {
+        this.selectedHex.material = this.hoverMaterial.clone();
+      } else {
+        this.selectedHex.material = this.defaultMaterial.clone();
+      }
     }
     
     // Set new selection
     if (intersects.length > 0) {
       const hex = intersects[0].object;
-      hex.material = this.selectedMaterial;
+      hex.material = this.selectedMaterial.clone();
       this.selectedHex = hex;
-      
-      // Add visual feedback for touch - briefly pulse the hex
-      if (this.detectMobile()) {
-        const originalScale = hex.scale.clone();
-        
-        // Scale up
-        hex.scale.set(1.1, 1.1, 1.1);
-        
-        // Scale back down after a brief delay
-        setTimeout(() => {
-          if (hex === this.selectedHex) {
-            hex.scale.copy(originalScale);
-          }
-        }, 150);
-      }
       
       return {
         hexId: hex.userData.hexId,
@@ -195,13 +195,25 @@ class HexGrid {
     const hex = this.hexMeshes[hexId];
     if (!hex) return;
     
-    // Example of state updates
+    // Keep track if this is the currently selected hex
+    const wasSelected = hex === this.selectedHex;
+    const wasHover = hex === this.hoverHex;
+    
+    // Apply color change first if specified
     if (state.color) {
-      hex.material.color.set(state.color);
+      // Create a new material to avoid modifying shared materials
+      const newMaterial = wasSelected ? 
+        this.selectedMaterial.clone() : 
+        (wasHover ? this.hoverMaterial.clone() : this.defaultMaterial.clone());
+      
+      // Set the new color
+      newMaterial.color.set(state.color);
+      hex.material = newMaterial;
     }
     
+    // Then handle extrusion if height is specified
     if (state.height !== undefined) {
-      // Extrude the hex to create a 3D column
+      // Extrude the hex to create a 3D column (will preserve selection state)
       this.extrudeHex(hex, state.height);
     }
   }
@@ -215,6 +227,10 @@ class HexGrid {
     const { q, r } = hexMesh.userData;
     const hexId = hexMesh.userData.hexId;
     
+    // Store selection state
+    const wasSelected = hexMesh === this.selectedHex;
+    const wasHover = hexMesh === this.hoverHex;
+    
     // Remove old mesh
     this.scene.remove(hexMesh);
     
@@ -226,37 +242,6 @@ class HexGrid {
     shape.moveTo(corners[0].x, corners[0].z);
     for (let i = 1; i < corners.length; i++) {
       shape.lineTo(corners[i].x, corners[i].z);
-    }
-    shape.lineTo(corners[0].x, corners[0].z);
-    
-    const extrudeSettings = {
-      steps: 1,
-      depth: height,
-      bevelEnabled: false
-    };
-    
-    const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-    geometry.rotateX(-Math.PI / 2);
-    
-    // Create new mesh
-    const newMesh = new THREE.Mesh(geometry, hexMesh.material.clone());
-    newMesh.userData = { q, r, hexId };
-    
-    // Preserve scale if there was any from animation
-    if (hexMesh.scale) {
-      newMesh.scale.copy(hexMesh.scale);
-    }
-    
-    // Add to scene and update reference
-    this.scene.add(newMesh);
-    this.hexMeshes[hexId] = newMesh;
-    
-    // Update selection/hover if needed
-    if (hexMesh === this.selectedHex) {
-      this.selectedHex = newMesh;
-    }
-    if (hexMesh === this.hoverHex) {
-      this.hoverHex = newMesh;
     }
   }
 }
