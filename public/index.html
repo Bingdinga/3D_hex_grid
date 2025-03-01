@@ -5,9 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>3D Hex Grid Space</title>
   <link rel="stylesheet" href="styles.css">
-  <!-- Import Three.js from CDN -->
+  
+  <!-- Import Three.js from CDN with proper version -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/examples/js/controls/OrbitControls.js"></script>
+  
+  <!-- Optional: Try to import OrbitControls as a module (but we have a fallback) -->
+  <script>
+    window.ThreeOrbitControls = undefined;
+  </script>
+  <script type="module">
+    import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.156.1/examples/jsm/controls/OrbitControls.js';
+    window.ThreeOrbitControls = OrbitControls;
+    console.log("OrbitControls module loaded successfully");
+  </script>
+  
   <!-- Import Socket.io client from CDN -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
