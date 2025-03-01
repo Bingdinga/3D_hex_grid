@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Hex Grid Space</title>
+  <link rel="stylesheet" href="styles.css">
+  <!-- Import Three.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/examples/js/controls/OrbitControls.js"></script>
+  <!-- Import Socket.io client from CDN -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+  <div id="game-container">
+    <!-- Three.js canvas will be inserted here -->
+    <div id="canvas-container"></div>
+    
+    <!-- UI Overlays -->
+    <div id="ui-overlay">
+      <!-- Room info panel -->
+      <div id="room-panel">
+        <div id="room-info">
+          <span id="room-code-display">Not in a room</span>
+          <button id="copy-room-code" disabled>Copy</button>
+        </div>
+        <div id="room-controls">
+          <button id="create-room-btn">Create Room</button>
+          <div id="join-room-controls">
+            <input type="text" id="room-code-input" placeholder="Room Code">
+            <button id="join-room-btn">Join</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Chat interface -->
+      <div id="chat-container" class="collapsed">
+        <div id="chat-header">
+          <span>Chat</span>
+          <button id="toggle-chat-btn">▼</button>
+        </div>
+        <div id="chat-messages"></div>
+        <div id="chat-input-area">
+          <input type="text" id="chat-input" placeholder="Type a message...">
+          <button id="send-chat-btn">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load our JavaScript files -->
+  <script src="js/HexUtils.js"></script>
+  <script src="js/HexGrid.js"></script>
+  <script src="js/UI.js"></script>
+  <script src="js/Socket.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
