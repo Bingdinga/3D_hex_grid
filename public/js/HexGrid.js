@@ -9,6 +9,8 @@ class HexGrid {
     this.hexMeshes = {}; // Maps hex IDs to their meshes
     this.selectedHex = null;
     this.hoverHex = null;
+    this.currentRoomCode = null; // We'll need to know the room code for updates
+    this.socketManager = null; // Reference to socket manager for sending updates
     
     // Set smaller radius for mobile devices to improve performance
     if (this.detectMobile()) {
@@ -42,6 +44,68 @@ class HexGrid {
     
     // Initialize
     this.createGrid();
+    
+    // Add scroll listener for height adjustment of selected hex
+    window.addEventListener('wheel', this.handleScroll.bind(this));
+  }
+  
+  /**
+   * Set the socket manager reference
+   * @param {SocketManager} socketManager - Reference to socket manager
+   */
+  setSocketManager(socketManager) {
+    this.socketManager = socketManager;
+  }
+  
+  /**
+   * Set the current room code
+   * @param {string} roomCode - Current room code
+   */
+  setRoomCode(roomCode) {
+    this.currentRoomCode = roomCode;
+  }
+  
+  /**
+   * Handle scroll wheel events to adjust selected hex height
+   * @param {WheelEvent} event - Mouse wheel event
+   */
+  handleScroll(event) {
+    // Only proceed if we have a selected hex
+    if (!this.selectedHex || !this.currentRoomCode || !this.socketManager) return;
+    
+    // Prevent default scrolling behavior when adjusting hex height
+    if (event.target === document.querySelector('#canvas-container canvas')) {
+      event.preventDefault();
+      
+      // Get current height or default to 1
+      const currentHeight = this.selectedHex.userData.height || 1;
+      
+      // Calculate new height based on scroll direction
+      // Use smaller increments for finer control
+      const direction = event.deltaY > 0 ? -1 : 1;
+      const heightChange = 0.25 * direction;
+      let newHeight = Math.max(0.25, Math.min(5, currentHeight + heightChange));
+      
+      // Round to nearest 0.25 for cleaner values
+      newHeight = Math.round(newHeight * 4) / 4;
+      
+      // Only update if height actually changed
+      if (newHeight !== currentHeight) {
+        // Create action with just the height change
+        const action = {
+          height: newHeight
+        };
+        
+        // Send to server
+        this.socketManager.sendHexAction(
+          this.currentRoomCode,
+          this.selectedHex.userData.hexId,
+          action
+        );
+      }
+      return true; //event handled
+    }
+    return false; //Not handled
   }
   
   /**
@@ -91,7 +155,7 @@ class HexGrid {
       mesh.position.y = 0.01;
       
       // Store hex data
-      mesh.userData = { q, r, hexId };
+      mesh.userData = { q, r, hexId, height: 0.01 };
       
       // Add to scene and store reference
       this.scene.add(mesh);
@@ -121,7 +185,7 @@ class HexGrid {
     // Find intersections
     const intersects = this.raycaster.intersectObjects(Object.values(this.hexMeshes));
     
-    // Clear previous hover
+    // Clear previous hover (but not if it's the selected hex)
     if (this.hoverHex && this.hoverHex !== this.selectedHex) {
       this.hoverHex.material = this.defaultMaterial.clone();
     }
@@ -160,18 +224,17 @@ class HexGrid {
     // Find intersections
     const intersects = this.raycaster.intersectObjects(Object.values(this.hexMeshes));
     
-    // Clear previous selection visual (but don't change the selection reference yet)
+    // Clear previous selection visual (but maintain selected hex)
     if (this.selectedHex) {
-      if (this.selectedHex === this.hoverHex) {
-        this.selectedHex.material = this.hoverMaterial.clone();
-      } else {
-        this.selectedHex.material = this.defaultMaterial.clone();
-      }
+      // Restore default material to previous selection
+      this.selectedHex.material = this.defaultMaterial.clone();
     }
     
-    // Set new selection
+    // If we clicked on a hex, select it
     if (intersects.length > 0) {
       const hex = intersects[0].object;
+      
+      // Apply selection material
       hex.material = this.selectedMaterial.clone();
       this.selectedHex = hex;
       
@@ -180,10 +243,11 @@ class HexGrid {
         q: hex.userData.q,
         r: hex.userData.r
       };
+    } else {
+      // If we clicked elsewhere, clear selection
+      this.selectedHex = null;
+      return null;
     }
-    
-    this.selectedHex = null;
-    return null;
   }
   
   /**
@@ -199,7 +263,10 @@ class HexGrid {
     const wasSelected = hex === this.selectedHex;
     const wasHover = hex === this.hoverHex;
     
-    // Apply color change first if specified
+    // Store current height or use default if not available
+    const currentHeight = hex.userData.height || 0.01;
+    
+    // Apply color change if specified
     if (state.color) {
       // Create a new material to avoid modifying shared materials
       const newMaterial = wasSelected ? 
@@ -213,7 +280,10 @@ class HexGrid {
     
     // Then handle extrusion if height is specified
     if (state.height !== undefined) {
-      // Extrude the hex to create a 3D column (will preserve selection state)
+      // Store the new height in user data
+      hex.userData.height = state.height;
+      
+      // Extrude the hex to create a 3D column
       this.extrudeHex(hex, state.height);
     }
   }
@@ -227,9 +297,10 @@ class HexGrid {
     const { q, r } = hexMesh.userData;
     const hexId = hexMesh.userData.hexId;
     
-    // Store selection state
+    // Store selection state and material
     const wasSelected = hexMesh === this.selectedHex;
     const wasHover = hexMesh === this.hoverHex;
+    const currentMaterial = hexMesh.material.clone();
     
     // Remove old mesh
     this.scene.remove(hexMesh);
@@ -242,6 +313,41 @@ class HexGrid {
     shape.moveTo(corners[0].x, corners[0].z);
     for (let i = 1; i < corners.length; i++) {
       shape.lineTo(corners[i].x, corners[i].z);
+    }
+    shape.lineTo(corners[0].x, corners[0].z);
+    
+    // Extrusion settings
+    const extrudeSettings = {
+      steps: 1,
+      depth: height,
+      bevelEnabled: false
+    };
+    
+    // Create extruded geometry
+    const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    
+    // Rotate to correct orientation (extrude along Y axis)
+    geometry.rotateX(-Math.PI / 2);
+    
+    // Create new mesh with the same material
+    const newMesh = new THREE.Mesh(geometry, currentMaterial);
+    
+    // Copy user data, including height
+    newMesh.userData = { q, r, hexId, height };
+    
+    // Add to scene
+    this.scene.add(newMesh);
+    
+    // Store reference to replace the old one
+    this.hexMeshes[hexId] = newMesh;
+    
+    // Restore selection state if needed
+    if (wasSelected) {
+      this.selectedHex = newMesh;
+    }
+    
+    if (wasHover) {
+      this.hoverHex = newMesh;
     }
   }
 }
