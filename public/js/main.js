@@ -37,10 +37,54 @@ class App {
       // Start render loop
       this.animate();
       console.log('Animation loop started');
+      
+      // Detect if we're on a mobile device
+      this.isMobile = this.detectMobile();
+      console.log('Mobile device detection:', this.isMobile ? 'Mobile' : 'Desktop');
+      
+      // Prevent default touch behavior (scrolling, pinch-zoom)
+      this.preventDefaultTouchBehavior();
     } catch (error) {
       console.error('Error during initialization:', error);
       alert('Error initializing application: ' + error.message);
     }
+  }
+  
+  /**
+   * Detect if the user is on a mobile device
+   * @returns {boolean} True if on mobile device
+   */
+  detectMobile() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  }
+  
+  /**
+   * Prevent default touch behavior to avoid scrolling and zooming
+   */
+  preventDefaultTouchBehavior() {
+    // Prevent scrolling when touching the canvas
+    document.body.addEventListener('touchstart', function(e) {
+      if (e.target === document.querySelector('#canvas-container canvas')) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+    
+    document.body.addEventListener('touchmove', function(e) {
+      if (e.target === document.querySelector('#canvas-container canvas')) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+    
+    document.body.addEventListener('touchend', function(e) {
+      if (e.target === document.querySelector('#canvas-container canvas')) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+    
+    // Disable context menu (right-click) for the application
+    document.getElementById('game-container').addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
   }
   
   /**
@@ -89,6 +133,15 @@ class App {
       this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     });
     
+    // Set up touch position tracking for mobile
+    window.addEventListener('touchmove', (event) => {
+      if (event.touches.length > 0) {
+        const touch = event.touches[0];
+        this.mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+        this.mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+      }
+    });
+    
     // Set up click handling
     window.addEventListener('click', (event) => {
       // Make sure the click is not on a UI element
@@ -97,11 +150,39 @@ class App {
       this.handleHexClick();
     });
     
+    // Set up touch tap handling for mobile
+    window.addEventListener('touchend', (event) => {
+      // Make sure the tap is not on a UI element
+      if (event.target.closest('#ui-overlay')) return;
+      
+      // Only handle single-finger taps (not multi-touch gestures)
+      if (event.changedTouches.length === 1) {
+        // Update mouse position one last time
+        const touch = event.changedTouches[0];
+        this.mouse.x = (touch.clientX / window.innerWidth) * 2 - 1;
+        this.mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
+        
+        // Check if this was a tap, not a drag (movement less than threshold)
+        if (!this.controls.wasDragging) {
+          this.handleHexClick();
+        }
+      }
+    });
+    
     // Handle window resize
     window.addEventListener('resize', () => {
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    
+    // Handle device orientation changes
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => {
+        this.camera.aspect = window.innerWidth / window.innerHeight;
+        this.camera.updateProjectionMatrix();
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+      }, 200); // Small delay to allow browser to complete orientation change
     });
   }
   
@@ -117,6 +198,13 @@ class App {
       this.controls.dampingFactor = 0.25;
       this.controls.screenSpacePanning = false;
       this.controls.maxPolarAngle = Math.PI / 2;
+      
+      // Add touch gesture recognition for OrbitControls
+      this.controls.touches = {
+        ONE: THREE.TOUCH.ROTATE,
+        TWO: THREE.TOUCH.DOLLY_PAN
+      };
+      
       return;
     }
     
@@ -127,7 +215,13 @@ class App {
       update: function() {},  // Empty update function for animation loop
       enabled: true,
       isMouseDown: false,
+      isTouching: false,
+      wasDragging: false,
+      dragThreshold: 10,
       lastMousePosition: { x: 0, y: 0 },
+      lastTouchPosition: { x: 0, y: 0 },
+      touchStartPosition: { x: 0, y: 0 },
+      pinchStartDistance: 0,
       cameraDistance: 25,  // Initial camera distance
       cameraTheta: Math.PI / 4,  // Horizontal angle
       cameraPhi: Math.PI / 3,    // Vertical angle
@@ -191,6 +285,108 @@ class App {
       }
     });
     
+    // Touch start event for mobile
+    this.renderer.domElement.addEventListener('touchstart', (event) => {
+      event.preventDefault();
+      
+      if (event.touches.length === 1) {
+        // Single touch - for rotation
+        this.controls.isTouching = true;
+        this.controls.wasDragging = false;
+        const touch = event.touches[0];
+        this.controls.lastTouchPosition = {
+          x: touch.clientX,
+          y: touch.clientY
+        };
+        this.controls.touchStartPosition = {
+          x: touch.clientX,
+          y: touch.clientY
+        };
+      } 
+      else if (event.touches.length === 2) {
+        // Two touches - for pinch zoom
+        this.controls.isTouching = true;
+        const touch1 = event.touches[0];
+        const touch2 = event.touches[1];
+        
+        // Calculate the distance between the two touches
+        const dx = touch1.clientX - touch2.clientX;
+        const dy = touch1.clientY - touch2.clientY;
+        this.controls.pinchStartDistance = Math.sqrt(dx * dx + dy * dy);
+      }
+    }, { passive: false });
+    
+    // Touch move event for mobile
+    this.renderer.domElement.addEventListener('touchmove', (event) => {
+      event.preventDefault();
+      
+      if (this.controls.isTouching && this.controls.enabled) {
+        if (event.touches.length === 1) {
+          // Single touch movement - rotation
+          const touch = event.touches[0];
+          
+          // Calculate touch movement
+          const deltaX = touch.clientX - this.controls.lastTouchPosition.x;
+          const deltaY = touch.clientY - this.controls.lastTouchPosition.y;
+          
+          // Check if we've moved beyond the drag threshold
+          const totalDeltaX = touch.clientX - this.controls.touchStartPosition.x;
+          const totalDeltaY = touch.clientY - this.controls.touchStartPosition.y;
+          const totalDelta = Math.sqrt(totalDeltaX * totalDeltaX + totalDeltaY * totalDeltaY);
+          
+          if (totalDelta > this.controls.dragThreshold) {
+            this.controls.wasDragging = true;
+          }
+          
+          // Update camera angles
+          this.controls.cameraTheta += deltaX * 0.01;
+          this.controls.cameraPhi = Math.max(0.1, Math.min(Math.PI - 0.1, this.controls.cameraPhi - deltaY * 0.01));
+          
+          // Update camera position
+          this.controls.updateCameraPosition(this.camera);
+          
+          // Save current position
+          this.controls.lastTouchPosition = {
+            x: touch.clientX,
+            y: touch.clientY
+          };
+        } 
+        else if (event.touches.length === 2) {
+          // Two-finger pinch-zoom
+          const touch1 = event.touches[0];
+          const touch2 = event.touches[1];
+          
+          // Calculate current distance between touches
+          const dx = touch1.clientX - touch2.clientX;
+          const dy = touch1.clientY - touch2.clientY;
+          const currentDistance = Math.sqrt(dx * dx + dy * dy);
+          
+          // Calculate zoom factor
+          const zoomFactor = currentDistance / this.controls.pinchStartDistance;
+          
+          // Update camera distance (zoom)
+          this.controls.cameraDistance = Math.max(5, Math.min(50, this.controls.cameraDistance / zoomFactor));
+          
+          // Save the new distance
+          this.controls.pinchStartDistance = currentDistance;
+          
+          // Update camera position
+          this.controls.updateCameraPosition(this.camera);
+          
+          // Mark as dragging to prevent click after pinch
+          this.controls.wasDragging = true;
+        }
+      }
+    }, { passive: false });
+    
+    // Touch end event for mobile
+    this.renderer.domElement.addEventListener('touchend', (event) => {
+      event.preventDefault();
+      this.controls.isTouching = false;
+      
+      // Keep wasDragging flag until next touchstart
+    }, { passive: false });
+    
     // Mouse wheel for zoom
     this.renderer.domElement.addEventListener('wheel', (event) => {
       if (!this.controls.enabled) return;
@@ -206,7 +402,7 @@ class App {
       
       // Prevent default scrolling behavior
       event.preventDefault();
-    });
+    }, { passive: false });
   }
   
   /**
