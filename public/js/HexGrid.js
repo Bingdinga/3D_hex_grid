@@ -334,20 +334,19 @@ class HexGrid {
 
     // Handle voxel model data if present
     if (state.voxelModel) {
-
       // Create model options from incoming data
       const modelOptions = {
-        fallbackType: state.voxelModel.type,
+        modelType: state.voxelModel.type,
         heightOffset: 1.0, // Use a consistent height offset
-        scale: state.voxelModel.scale || 0.5,
+        scale: state.voxelModel.scale || 1.5,
         rotation: state.voxelModel.rotation || { x: 0, y: 0, z: 0 },
         animate: state.voxelModel.animate !== undefined ? state.voxelModel.animate : true,
         hoverRange: state.voxelModel.hoverRange || 0.2,
         hoverSpeed: state.voxelModel.hoverSpeed || 1.0,
         rotateSpeed: state.voxelModel.rotateSpeed || 0.5,
-        hexHeight: hex.userData.height || 0 // Pass current hex height
+        hexHeight: hex.userData.height || 0, // Pass current hex height
+        uniqueId: Date.now() + Math.random().toString(36).substring(2, 9) // Ensure we get a fresh instance
       };
-
 
       // Remove any existing model first
       if (this.voxelModelManager) {
@@ -542,11 +541,6 @@ class HexGrid {
  */
   spawnVoxelModelOnHex(hexId, options = {}) {
 
-    // Check if VoxelModelManager class exists at all
-    if (typeof VoxelModelManager === 'undefined') {
-      console.error('VoxelModelManager class is not defined!');
-      return null;
-    }
     // Skip if voxel model manager isn't initialized
     if (!this.voxelModelManager) {
       console.warn('Cannot spawn voxel model: voxel model manager not initialized');
@@ -559,16 +553,25 @@ class HexGrid {
       return null;
     }
 
+    console.log(`Starting model spawning process for hex ${hexId}`);
+
+    // First, ensure ANY existing model is removed properly
+    this.removeVoxelModel(hexId);
+
     // Default options
     const modelOptions = {
       heightOffset: options.heightOffset || 1.0, // Height above the hex
-      scale: options.scale || 0.5,
+      scale: options.scale || 1.5,
       animate: options.animate !== undefined ? options.animate : true, // Enable animation by default
       hoverRange: options.hoverRange || 0.2, // Range of up/down hover
       hoverSpeed: options.hoverSpeed || 1.0, // Speed of hover animation
       rotateSpeed: options.rotateSpeed || 0.5, // Rotation speed (radians per second)
       hexHeight: hex.userData.height || 0 // Pass the current hex height
     };
+
+    // In the spawnVoxelModelOnHex method of HexGrid.js
+    // Add a uniqueness parameter to ensure we get a fresh instance
+    modelOptions.uniqueId = Date.now() + Math.random().toString(36).substring(2, 9);
 
     // If a model type was specified, convert it to a path
     if (options.modelType) {

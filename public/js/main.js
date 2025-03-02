@@ -461,7 +461,7 @@ class App {
     const modelOptions = {
       modelType: randomModelType,
       heightOffset: 1.0,
-      scale: 0.5 + Math.random() * 0.5, // Random scale between 0.5 and 1.0
+      scale: 1.5 + Math.random() * 0.5, // Random scale between 1.5 and 2.0
       rotation: {
         x: 0,
         y: Math.random() * Math.PI * 2, // Random Y rotation
