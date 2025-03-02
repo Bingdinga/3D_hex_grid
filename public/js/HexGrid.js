@@ -292,6 +292,8 @@ class HexGrid {
       // Add this:
       this.createHexCenterMarker(hex.userData.hexId);
 
+      this.playAnimationOnHex(hex.userData.hexId);
+
       return {
         hexId: hex.userData.hexId,
         q: hex.userData.q,
@@ -301,6 +303,23 @@ class HexGrid {
       // If we clicked elsewhere, clear selection
       this.selectedHex = null;
       return null;
+    }
+  }
+
+  /**
+   * Play a random animation on a hex's model if available
+   * @param {string} hexId - ID of the hex
+   */
+  playAnimationOnHex(hexId) {
+    if (this.voxelModelManager && this.voxelModelManager.animationClips[hexId]) {
+      // Play a random animation for 3 seconds
+      this.voxelModelManager.playRandomAnimation(hexId, 3);
+
+      // Log available animations for this model
+      const animations = this.voxelModelManager.listAnimations(hexId);
+      if (animations.length > 0) {
+        console.log(`Playing one of ${animations.length} available animations for hex ${hexId} for 3 seconds`);
+      }
     }
   }
 

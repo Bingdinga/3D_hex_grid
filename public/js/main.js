@@ -52,6 +52,10 @@ class App {
 
       // Prevent default touch behavior (scrolling, pinch-zoom)
       this.preventDefaultTouchBehavior();
+
+      // Animation state
+      this.animationsEnabled = true;
+
     } catch (error) {
       console.error('Error during initialization:', error);
       alert('Error initializing application: ' + error.message);
@@ -178,6 +182,14 @@ class App {
       // No need to prevent default as OrbitControls will do that
     }, { passive: false });
 
+    // Add keyboard shortcut for toggling animations (press 'A' key)
+    window.addEventListener('keydown', (event) => {
+      // Toggle animations with 'A' key
+      if (event.key === 'a' || event.key === 'A') {
+        this.toggleAnimations();
+      }
+    });
+
     // Add lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     this.scene.add(ambientLight);
@@ -264,14 +276,6 @@ class App {
   }
 
   /**
-   * Implement custom orbital controls
-   */
-  implementCustomControls() {
-    // This method is now redundant as we're using OrbitControls directly in initThree
-    console.log('Using imported OrbitControls');
-  }
-
-  /**
    * Connect all components and set up callbacks
    */
   connectComponents() {
@@ -286,6 +290,20 @@ class App {
 
     this.ui.setSendChatMessageCallback((roomCode, message) => {
       this.socketManager.sendChatMessage(roomCode, message);
+    });
+
+    // In connectComponents method in main.js
+    // Connect UI refresh button to model manager refresh
+    this.ui.setRefreshModelsCallback(() => {
+      if (this.hexGrid && this.hexGrid.voxelModelManager) {
+        this.hexGrid.voxelModelManager.refreshModelList()
+          .then(models => {
+            this.ui.showToast(`Found ${models.length} models`, 'success');
+          })
+          .catch(err => {
+            this.ui.showToast('Failed to refresh models', 'error');
+          });
+      }
     });
 
     // Socket to UI connections
@@ -443,6 +461,7 @@ class App {
    * Handle placing a voxel model on a hex
    * @param {string} hexId - ID of the clicked hex
    */
+  // Update this method in main.js
   handleVoxelModelPlacement(hexId) {
     // Only place models if we're in a room
     if (!this.currentRoomCode) return;
@@ -451,11 +470,8 @@ class App {
     const hexMesh = this.hexGrid.hexMeshes[hexId];
     if (!hexMesh) return;
 
-    // Get available model types
-    const modelTypes = ['doom_voxel_marines', 'hot_air_ballon_voxel', 'voxel_isabelle', 'voxel_lucky_cat', 'voxel_world'];
-
-    // Select a random model type
-    const randomModelType = modelTypes[Math.floor(Math.random() * modelTypes.length)];
+    // Get a random model type from the available models
+    const randomModelType = this.hexGrid.voxelModelManager.getRandomModelType();
 
     // Create a model selection with animation parameters
     const modelOptions = {
@@ -470,7 +486,8 @@ class App {
       animate: true,
       hoverRange: 0.1 + Math.random() * 0.15, // Random hover range
       hoverSpeed: 0.8 + Math.random() * 1.0, // Random hover speed
-      rotateSpeed: 0.2 + Math.random() * 0.6 // Random rotation speed
+      rotateSpeed: 0.2 + Math.random() * 0.6, // Random rotation speed
+      playAnimation: true // Add this option to play animation immediately
     };
 
     // Place the model on the hex
@@ -509,6 +526,26 @@ class App {
       color += letters[Math.floor(Math.random() * 16)];
     }
     return color;
+  }
+
+  /**
+ * Toggle model animations on/off
+ */
+  toggleAnimations() {
+    this.animationsEnabled = !this.animationsEnabled;
+
+    if (this.hexGrid && this.hexGrid.voxelModelManager) {
+      this.hexGrid.voxelModelManager.setAnimationsEnabled(this.animationsEnabled);
+    }
+
+    // Show a message about the current state
+    const message = `Animations ${this.animationsEnabled ? 'enabled' : 'disabled'}`;
+    console.log(message);
+
+    // If UI is available, show a toast notification
+    if (this.ui && typeof this.ui.showToast === 'function') {
+      this.ui.showToast(message, this.animationsEnabled ? 'success' : 'info');
+    }
   }
 
   /**

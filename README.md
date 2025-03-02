@@ -37,3 +37,4 @@
 - **Zooming**: Pinch with two fingers to zoom in and out
 - **Fullscreen mode**: For the best experience on mobile devices, add the app to your home screen or use your browser's fullscreen mode
 
+- **Toggle animations**: Press 'A' to toggle model animations on/off

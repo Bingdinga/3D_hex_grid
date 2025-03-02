@@ -9,6 +9,11 @@ class VoxelModelManager {
     this.scene = scene;
     this.models = {};     // Active model instances by hexId
     this.modelCache = {}; // Cache for loaded models
+    this.availableModels = []; // Add this line to store available models
+
+    this.animationMixers = {};  // Stores animation mixers by hexId
+    this.animationActions = {}; // Stores animation actions by hexId
+    this.animationClips = {};   // Stores available animation clips by hexId
 
     // Create a GLTFLoader instance
     this.gltfLoader = new GLTFLoader();
@@ -20,6 +25,12 @@ class VoxelModelManager {
     this.clock = new THREE.Clock(); // For timing animations
 
     this.pendingModelRequests = {}; // Add this line to track pending requests
+
+    // Fetch available models when manager is created
+    this.fetchAvailableModels().catch(err => {
+      console.warn('Failed to fetch initial model list:', err);
+    });
+
   }
 
   /**
@@ -30,10 +41,19 @@ class VoxelModelManager {
   loadModel(modelPath) {
     // Check if model is already in cache
     if (this.modelCache[modelPath]) {
-      // Clone and return immediately for cached models
+      // Clone the cached model
+      const model = this.modelCache[modelPath].clone();
+
+      // Clone animation clips if they exist
+      let animationClips = [];
+      if (this.modelCache[modelPath].userData.animations) {
+        animationClips = this.modelCache[modelPath].userData.animations.map(clip => clip.clone());
+      }
+
       return Promise.resolve({
-        model: this.modelCache[modelPath].clone(),
-        isFirstLoad: false
+        model: model,
+        isFirstLoad: false,
+        animations: animationClips
       });
     }
 
@@ -44,13 +64,26 @@ class VoxelModelManager {
         (gltf) => {
           console.log(`Model ${modelPath} loaded successfully (first time)`);
 
-          // Important: Don't add to scene yet, just cache the original
+          // Store the original model in cache
           this.modelCache[modelPath] = gltf.scene;
 
-          // Resolve with clone and first-load flag
+          // Store animation clips in the model's userData for future cloning
+          if (gltf.animations && gltf.animations.length > 0) {
+            console.log(`Found ${gltf.animations.length} animations in ${modelPath}:`);
+            gltf.animations.forEach((clip, index) => {
+              console.log(`  ${index}: "${clip.name}" (duration: ${clip.duration.toFixed(2)}s)`);
+            });
+
+            this.modelCache[modelPath].userData.animations = gltf.animations;
+          } else {
+            console.log(`No animations found in ${modelPath}`);
+          }
+
+          // Resolve with a clone and animation data
           resolve({
             model: gltf.scene.clone(),
-            isFirstLoad: true
+            isFirstLoad: true,
+            animations: gltf.animations || []
           });
         },
         (progress) => {
@@ -114,19 +147,18 @@ class VoxelModelManager {
     // Remove any existing model on this hex
     this.removeModel(hexId);
 
-    let model;
-
     // Create a promise for this request
     const requestPromise = (async () => {
       let model;
+      let animations = []; // Define animations here so it's available throughout the function
 
       try {
         if (options.modelPath) {
           // Get model and first-load flag
-          const { model: loadedModel, isFirstLoad } = await this.loadModel(options.modelPath);
-          model = loadedModel;
+          const loadResult = await this.loadModel(options.modelPath);
+          const loadedModel = loadResult.model;
+          animations = loadResult.animations || []; // Store animations from the result
 
-          // Center the model origin point (add this line)
           model = this.centerModelOrigin(loadedModel);
 
           // First, normalize the model size by getting its bounding box
@@ -183,7 +215,28 @@ class VoxelModelManager {
         // Store reference
         this.models[hexId] = model;
 
-        // Store animation parameters if animation is enabled
+        // Set up animations if available
+        if (animations && animations.length > 0) {
+          // Store available animation clips for this model
+          this.animationClips[hexId] = animations;
+
+          // Create a mixer for this model
+          const mixer = new THREE.AnimationMixer(model);
+          this.animationMixers[hexId] = mixer;
+
+          // Log available animations
+          console.log(`Model at hex ${hexId} has ${animations.length} animations available:`);
+          animations.forEach((clip, index) => {
+            console.log(`  ${index}: "${clip.name}" (duration: ${clip.duration.toFixed(2)}s)`);
+          });
+
+          // Automatically play a random animation if option is set
+          if (options.playAnimation) {
+            this.playRandomAnimation(hexId);
+          }
+        }
+
+        // Store animation parameters if animation is enabled (for hover/rotate animations)
         if (options.animate) {
           this.animatedModels[hexId] = {
             model: model,
@@ -203,7 +256,6 @@ class VoxelModelManager {
         // Remove from pending requests when done
         delete this.pendingModelRequests[requestKey];
       }
-      this.logModelInfo();
     })();
 
     // Store the promise in pending requests
@@ -274,9 +326,57 @@ class VoxelModelManager {
     }
   }
 
+  // Add these methods to VoxelModelManager.js
+
+  /**
+   * Fetch available models from the server
+   * @returns {Promise<string[]>} Array of available model names
+   */
+  async fetchAvailableModels() {
+    try {
+      const response = await fetch('/api/models');
+      const data = await response.json();
+
+      if (data.models && Array.isArray(data.models)) {
+        // Store the list of available models
+        this.availableModels = data.models;
+        console.log('Available models:', this.availableModels);
+        return this.availableModels;
+      } else {
+        console.error('Invalid response format from /api/models');
+        return [];
+      }
+    } catch (error) {
+      console.error('Error fetching available models:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get a random model type from available models
+   * @returns {string} Random model type
+   */
+  getRandomModelType() {
+    if (!this.availableModels || this.availableModels.length === 0) {
+      // Default list if models haven't been fetched yet
+      return 'voxel_lucky_cat';
+    }
+
+    const randomIndex = Math.floor(Math.random() * this.availableModels.length);
+    return this.availableModels[randomIndex];
+  }
+
   updateAnimations() {
+    // Skip all animation updates if animations are disabled
+    if (this.animationsEnabled === false) return;
+
     const deltaTime = this.clock.getDelta();
     const time = this.clock.getElapsedTime();
+
+    // Update animation mixers
+    Object.keys(this.animationMixers).forEach(hexId => {
+      this.animationMixers[hexId].update(deltaTime);
+    });
 
     // Update each animated model
     Object.keys(this.animatedModels).forEach(hexId => {
@@ -307,6 +407,144 @@ class VoxelModelManager {
   }
 
   /**
+ * Enable or disable all model animations
+ * @param {boolean} enabled - Whether animations should be enabled
+ */
+  setAnimationsEnabled(enabled) {
+    // Store the global animation state
+    this.animationsEnabled = enabled;
+
+    // If animations are disabled, reset all models to their base position
+    if (!enabled) {
+      Object.keys(this.animatedModels).forEach(hexId => {
+        const animData = this.animatedModels[hexId];
+        if (!animData || !animData.model) return;
+
+        // Reset to initial position
+        animData.model.position.y = animData.initialY;
+
+        // Stop rotation by ensuring we don't accumulate further changes
+        // but keep the current rotation value
+        animData.pausedRotationY = animData.model.rotation.y;
+      });
+    } else {
+      // When re-enabling, we can let the normal animation update take over
+      // but we need to ensure the clock doesn't cause a sudden jump
+      this.resetClock();
+    }
+  }
+
+  /**
+ * Play a specific animation on a model
+ * @param {string} hexId - ID of the hex with the model
+ * @param {number|string} animationIndex - Index or name of animation to play
+ * @param {number} duration - Duration to play in seconds (0 = play full animation)
+ * @returns {boolean} Success status
+ */
+  playAnimation(hexId, animationIndex, duration = 0) {
+    // Check if we have animations for this model
+    if (!this.animationClips[hexId] || !this.animationMixers[hexId]) {
+      console.warn(`No animations available for hex ${hexId}`);
+      return false;
+    }
+
+    // Stop any currently playing animations
+    if (this.animationActions[hexId]) {
+      this.animationActions[hexId].stop();
+    }
+
+    // Get the animation clip
+    let clip;
+    if (typeof animationIndex === 'number') {
+      // Get by index
+      clip = this.animationClips[hexId][animationIndex];
+    } else if (typeof animationIndex === 'string') {
+      // Get by name
+      clip = this.animationClips[hexId].find(c => c.name === animationIndex);
+    }
+
+    if (!clip) {
+      console.warn(`Animation ${animationIndex} not found for hex ${hexId}`);
+      return false;
+    }
+
+    // Create and play the animation action
+    const action = this.animationMixers[hexId].clipAction(clip);
+
+    // Configure the action based on duration
+    if (duration > 0) {
+      // Set the animation to play once (not loop)
+      action.setLoop(THREE.LoopOnce);
+      action.clampWhenFinished = true; // Stay at final position when done
+
+      // Set up a timer to stop the animation after the specified duration
+      setTimeout(() => {
+        if (this.animationActions[hexId] === action) {
+          action.fadeOut(0.5); // Smooth fade out over 0.5 seconds
+
+          // Clear the action reference after fade out
+          setTimeout(() => {
+            if (this.animationActions[hexId] === action) {
+              this.animationActions[hexId] = null;
+            }
+          }, 500);
+        }
+      }, duration * 1000);
+    } else {
+      // If no duration specified, play normally (usually looping)
+      action.setLoop(THREE.LoopRepeat);
+    }
+
+    action.reset();
+    action.play();
+
+    // Store the action
+    this.animationActions[hexId] = action;
+
+    console.log(`Playing animation "${clip.name}" on hex ${hexId}${duration > 0 ? ` for ${duration} seconds` : ''}`);
+    return true;
+  }
+
+  /**
+ * Play a random animation on a model
+ * @param {string} hexId - ID of the hex with the model
+ * @param {number} duration - Duration to play in seconds (0 = play full animation)
+ * @returns {boolean} Success status
+ */
+  playRandomAnimation(hexId, duration = 0) {
+    // Check if we have animations for this model
+    if (!this.animationClips[hexId] || this.animationClips[hexId].length === 0) {
+      console.warn(`No animations available for hex ${hexId}`);
+      return false;
+    }
+
+    // Select a random animation
+    const randomIndex = Math.floor(Math.random() * this.animationClips[hexId].length);
+    return this.playAnimation(hexId, randomIndex, duration);
+  }
+
+  /**
+   * List all available animations for a model
+   * @param {string} hexId - ID of the hex with the model
+   * @returns {Array} Array of animation names and details
+   */
+  listAnimations(hexId) {
+    if (!this.animationClips[hexId]) {
+      console.warn(`No animations available for hex ${hexId}`);
+      return [];
+    }
+
+    const animations = this.animationClips[hexId].map((clip, index) => ({
+      index,
+      name: clip.name,
+      duration: clip.duration
+    }));
+
+    console.log(`Animations for hex ${hexId}:`, animations);
+    return animations;
+  }
+
+  /**
    * Remove a model from a hex
    * @param {string} hexId - ID of the hex
    */
@@ -315,14 +553,37 @@ class VoxelModelManager {
       // Remove from scene
       this.scene.remove(this.models[hexId]);
 
-      // Clean up animation data as well
-      delete this.animatedModels[hexId];
+      // Clean up animation resources
+      if (this.animationMixers[hexId]) {
+        this.animationMixers[hexId].stopAllAction();
+        delete this.animationMixers[hexId];
+      }
 
-      // Remove reference to model
+      if (this.animationActions[hexId]) {
+        delete this.animationActions[hexId];
+      }
+
+      if (this.animationClips[hexId]) {
+        delete this.animationClips[hexId];
+      }
+
+      // Clean up other resources
+      delete this.animatedModels[hexId];
       delete this.models[hexId];
 
-      console.log(`Model removed from hex ${hexId}`);
+      console.log(`Model and animations removed from hex ${hexId}`);
     }
+  }
+
+  // Add this method to VoxelModelManager.js
+
+  /**
+   * Refresh the list of available models
+   * @returns {Promise<string[]>} Updated list of models
+   */
+  async refreshModelList() {
+    console.log('Refreshing model list...');
+    return this.fetchAvailableModels();
   }
 
   /**

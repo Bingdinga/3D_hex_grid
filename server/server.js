@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
 const RoomManager = require('./RoomManager');
 
@@ -14,6 +15,26 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // Initialize room manager
 const roomManager = new RoomManager();
+
+// Add this to server.js after your other routes
+app.get('/api/models', (req, res) => {
+  const modelsDir = path.join(__dirname, '../public/models');
+
+  // Read all files in the models directory
+  fs.readdir(modelsDir, (err, files) => {
+    if (err) {
+      console.error('Error reading models directory:', err);
+      return res.status(500).json({ error: 'Failed to read models directory' });
+    }
+
+    // Filter for .glb files and remove extension
+    const modelFiles = files
+      .filter(file => file.endsWith('.glb'))
+      .map(file => file.replace('.glb', ''));
+
+    res.json({ models: modelFiles });
+  });
+});
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
@@ -30,7 +51,7 @@ io.on('connection', (socket) => {
   // Handle room joining
   socket.on('joinRoom', (roomCode) => {
     const joinResult = roomManager.joinRoom(roomCode, socket.id);
-    
+
     if (joinResult.success) {
       socket.join(roomCode);
       socket.emit('roomJoined', { roomCode, state: joinResult.state });

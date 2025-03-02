@@ -9,27 +9,38 @@ class UI {
     this.createRoomBtn = document.getElementById('create-room-btn');
     this.roomCodeInput = document.getElementById('room-code-input');
     this.joinRoomBtn = document.getElementById('join-room-btn');
-    
+
     // Chat elements
     this.chatContainer = document.getElementById('chat-container');
     this.toggleChatBtn = document.getElementById('toggle-chat-btn');
     this.chatMessages = document.getElementById('chat-messages');
     this.chatInput = document.getElementById('chat-input');
     this.sendChatBtn = document.getElementById('send-chat-btn');
-    
+
+    // In UI.js constructor, add this element
+    this.refreshModelsBtn = document.createElement('button');
+    this.refreshModelsBtn.id = 'refresh-models-btn';
+    this.refreshModelsBtn.textContent = 'Refresh Models';
+    this.refreshModelsBtn.className = 'action-btn';
+    this.refreshModelsBtn.style.position = 'absolute';
+    this.refreshModelsBtn.style.bottom = '10px';
+    this.refreshModelsBtn.style.left = '10px';
+    document.getElementById('ui-overlay').appendChild(this.refreshModelsBtn);
+
+
     // State
     this.currentRoomCode = null;
     this.isMobile = this.detectMobile();
-    
+
     // Initialize event listeners
     this.initEventListeners();
-    
+
     // Adjust UI for mobile
     if (this.isMobile) {
       this.setupMobileUI();
     }
   }
-  
+
   /**
    * Detect if the user is on a mobile device
    * @returns {boolean} True if on mobile device
@@ -37,25 +48,25 @@ class UI {
   detectMobile() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   }
-  
+
   /**
    * Make UI adjustments for mobile devices
    */
   setupMobileUI() {
     // Add class to body for potential CSS targeting
     document.body.classList.add('mobile-device');
-    
+
     // Adjust input fields for better mobile experience
     this.roomCodeInput.setAttribute('autocapitalize', 'characters');
     this.roomCodeInput.setAttribute('autocomplete', 'off');
     this.roomCodeInput.setAttribute('autocorrect', 'off');
     this.roomCodeInput.setAttribute('spellcheck', 'false');
-    
+
     this.chatInput.setAttribute('autocomplete', 'off');
-    
+
     // Make sure chat is collapsed by default on mobile
     this.chatContainer.classList.add('collapsed');
-    
+
     // Set up blur handlers for inputs to hide keyboard
     this.roomCodeInput.addEventListener('blur', () => {
       // Small timeout to prevent immediate re-focus when button is tapped
@@ -63,14 +74,14 @@ class UI {
         window.scrollTo(0, 0);
       }, 100);
     });
-    
+
     this.chatInput.addEventListener('blur', () => {
       setTimeout(() => {
         window.scrollTo(0, 0);
       }, 100);
     });
   }
-  
+
   /**
    * Set up all event listeners for UI elements
    */
@@ -79,25 +90,30 @@ class UI {
     this.createRoomBtn.addEventListener('click', () => {
       if (this.onCreateRoom) this.onCreateRoom();
     });
-    
+
+    // Add event listener
+    this.refreshModelsBtn.addEventListener('click', () => {
+      if (this.onRefreshModels) this.onRefreshModels();
+    });
+
     this.joinRoomBtn.addEventListener('click', () => {
       const roomCode = this.roomCodeInput.value.trim().toUpperCase();
       if (roomCode && this.onJoinRoom) {
         this.onJoinRoom(roomCode);
       }
     });
-    
+
     this.copyRoomCodeBtn.addEventListener('click', () => {
       if (this.currentRoomCode) {
         this.copyToClipboard(this.currentRoomCode);
       }
     });
-    
+
     // Chat-related listeners
     this.toggleChatBtn.addEventListener('click', () => {
       this.toggleChat();
     });
-    
+
     // Also allow clicking the chat header to toggle
     document.getElementById('chat-header').addEventListener('click', (e) => {
       // Only toggle if the click wasn't on the toggle button (which has its own handler)
@@ -105,11 +121,11 @@ class UI {
         this.toggleChat();
       }
     });
-    
+
     this.sendChatBtn.addEventListener('click', () => {
       this.sendChatMessage();
     });
-    
+
     this.chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         this.sendChatMessage();
@@ -117,7 +133,7 @@ class UI {
       }
     });
   }
-  
+
   /**
    * Copy text to clipboard with fallbacks for different browsers
    * @param {string} text - Text to copy
@@ -137,7 +153,7 @@ class UI {
       this.fallbackCopyToClipboard(text);
     }
   }
-  
+
   /**
    * Fallback method to copy text using a temporary textarea
    * @param {string} text - Text to copy
@@ -145,16 +161,16 @@ class UI {
   fallbackCopyToClipboard(text) {
     const textArea = document.createElement('textarea');
     textArea.value = text;
-    
+
     // Make the textarea out of viewport
     textArea.style.position = 'fixed';
     textArea.style.left = '-999999px';
     textArea.style.top = '-999999px';
-    
+
     document.body.appendChild(textArea);
     textArea.focus();
     textArea.select();
-    
+
     try {
       const successful = document.execCommand('copy');
       if (successful) {
@@ -165,10 +181,10 @@ class UI {
     } catch (err) {
       console.error('Error copying: ', err);
     }
-    
+
     document.body.removeChild(textArea);
   }
-  
+
   /**
    * Show feedback that the copy was successful
    */
@@ -176,23 +192,23 @@ class UI {
     // Temporary visual feedback
     const originalText = this.copyRoomCodeBtn.textContent;
     this.copyRoomCodeBtn.textContent = 'Copied!';
-    
+
     // Also flash the button to provide visual feedback
     this.copyRoomCodeBtn.classList.add('copy-flash');
-    
+
     setTimeout(() => {
       this.copyRoomCodeBtn.textContent = originalText;
       this.copyRoomCodeBtn.classList.remove('copy-flash');
     }, 2000);
   }
-  
+
   /**
    * Toggle chat panel expanded/collapsed state
    */
   toggleChat() {
     this.chatContainer.classList.toggle('collapsed');
     this.toggleChatBtn.textContent = this.chatContainer.classList.contains('collapsed') ? '▼' : '▲';
-    
+
     // If expanding, focus the chat input
     if (!this.chatContainer.classList.contains('collapsed')) {
       this.chatInput.focus();
@@ -202,7 +218,7 @@ class UI {
       }
     }
   }
-  
+
   /**
    * Send a chat message
    */
@@ -211,30 +227,30 @@ class UI {
     if (message && this.currentRoomCode && this.onSendChatMessage) {
       this.onSendChatMessage(this.currentRoomCode, message);
       this.chatInput.value = '';
-      
+
       // On mobile, keep focus on the input for continued typing
       if (this.isMobile) {
         this.chatInput.focus();
       }
     }
   }
-  
+
   /**
    * Update the room code display
    * @param {string} roomCode - The room code to display
    */
   updateRoomDisplay(roomCode) {
     this.currentRoomCode = roomCode;
-    
+
     if (roomCode) {
       this.roomCodeDisplay.textContent = `Room: ${roomCode}`;
       this.copyRoomCodeBtn.disabled = false;
-      
+
       // Update UI state to show we're in a room
       this.createRoomBtn.disabled = true;
       this.joinRoomBtn.disabled = true;
       this.roomCodeInput.disabled = true;
-      
+
       // On mobile, blur the input to hide keyboard
       if (this.isMobile) {
         this.roomCodeInput.blur();
@@ -243,14 +259,14 @@ class UI {
     } else {
       this.roomCodeDisplay.textContent = 'Not in a room';
       this.copyRoomCodeBtn.disabled = true;
-      
+
       // Update UI state to show we're not in a room
       this.createRoomBtn.disabled = false;
       this.joinRoomBtn.disabled = false;
       this.roomCodeInput.disabled = false;
     }
   }
-  
+
   /**
    * Display a new chat message
    * @param {string} userId - ID of the user who sent the message
@@ -260,31 +276,31 @@ class UI {
   displayChatMessage(userId, message, timestamp) {
     const messageElement = document.createElement('div');
     messageElement.className = 'chat-message';
-    
+
     // Format the timestamp
     const date = new Date(timestamp);
     const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
+
     // Create message content with user ID and timestamp
     messageElement.innerHTML = `
       <span class="user-id">${this.formatUserId(userId)}</span>
       <span class="timestamp">${timeStr}</span>
       <div class="message-content">${this.escapeHtml(message)}</div>
     `;
-    
+
     // Add to chat and scroll to bottom
     this.chatMessages.appendChild(messageElement);
     this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
-    
+
     // If chat is collapsed, give visual indication of new message
     if (this.chatContainer.classList.contains('collapsed')) {
       this.toggleChatBtn.textContent = '▼ New';
-      
+
       // For mobile, provide haptic feedback if available
       if (this.isMobile && window.navigator.vibrate) {
         window.navigator.vibrate(100); // Short vibration
       }
-      
+
       // Flash the chat header briefly
       this.chatContainer.classList.add('new-message');
       setTimeout(() => {
@@ -292,7 +308,7 @@ class UI {
       }, 1000);
     }
   }
-  
+
   /**
    * Format a user ID to a shorter display name
    * @param {string} userId - The full user ID
@@ -305,7 +321,7 @@ class UI {
     }
     return userId;
   }
-  
+
   /**
    * Display an error message
    * @param {string} message - Error message to display
@@ -318,7 +334,7 @@ class UI {
       alert(message);
     }
   }
-  
+
   /**
    * Display a toast notification
    * @param {string} message - Message to display
@@ -327,7 +343,7 @@ class UI {
   showToast(message, type = 'info') {
     // Create toast element if it doesn't exist
     let toastContainer = document.getElementById('toast-container');
-    
+
     if (!toastContainer) {
       toastContainer = document.createElement('div');
       toastContainer.id = 'toast-container';
@@ -340,7 +356,7 @@ class UI {
       toastContainer.style.maxWidth = '300px';
       document.body.appendChild(toastContainer);
     }
-    
+
     // Create toast
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
@@ -353,19 +369,19 @@ class UI {
     toast.style.transition = 'opacity 0.3s ease-in-out';
     toast.style.opacity = '0';
     toast.textContent = message;
-    
+
     // Add to container
     toastContainer.appendChild(toast);
-    
+
     // Trigger reflow to enable animation
     toast.offsetHeight;
     toast.style.opacity = '1';
-    
+
     // Vibration for errors on mobile
     if (type === 'error' && window.navigator.vibrate) {
       window.navigator.vibrate([100, 50, 100]); // Error pattern
     }
-    
+
     // Remove after delay
     setTimeout(() => {
       toast.style.opacity = '0';
@@ -373,7 +389,7 @@ class UI {
         if (toast.parentNode) {
           toastContainer.removeChild(toast);
         }
-        
+
         // Remove container if empty
         if (toastContainer.children.length === 0) {
           document.body.removeChild(toastContainer);
@@ -381,7 +397,7 @@ class UI {
       });
     }, 3000);
   }
-  
+
   /**
    * Escape HTML to prevent XSS
    * @param {string} unsafe - Potentially unsafe HTML string
@@ -395,7 +411,7 @@ class UI {
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
   }
-  
+
   /**
    * Set callback for when a user creates a room
    * @param {Function} callback - Function to call
@@ -403,7 +419,7 @@ class UI {
   setCreateRoomCallback(callback) {
     this.onCreateRoom = callback;
   }
-  
+
   /**
    * Set callback for when a user joins a room
    * @param {Function} callback - Function to call with room code
@@ -411,13 +427,19 @@ class UI {
   setJoinRoomCallback(callback) {
     this.onJoinRoom = callback;
   }
-  
+
+
   /**
    * Set callback for when a user sends a chat message
    * @param {Function} callback - Function to call with room code and message
    */
   setSendChatMessageCallback(callback) {
     this.onSendChatMessage = callback;
+  }
+
+  // Add this to the UI class methods
+  setRefreshModelsCallback(callback) {
+    this.onRefreshModels = callback;
   }
 }
 
