@@ -18,6 +18,8 @@ class VoxelModelManager {
 
     this.animatedModels = {}; // Track models that should be animated
     this.clock = new THREE.Clock(); // For timing animations
+
+    this.pendingModelRequests = {}; // Add this line to track pending requests
   }
 
   /**
@@ -26,9 +28,6 @@ class VoxelModelManager {
    * @returns {Promise} Promise that resolves with the loaded model
    */
   loadModel(modelPath) {
-    // New flag to track if this is the first time loading this model
-    const isFirstLoad = !this.modelCache[modelPath];
-
     // Check if model is already in cache
     if (this.modelCache[modelPath]) {
       // Clone and return immediately for cached models
@@ -38,20 +37,20 @@ class VoxelModelManager {
       });
     }
 
-    /// Load the model
+    // Load the model
     return new Promise((resolve, reject) => {
       this.gltfLoader.load(
         modelPath,
         (gltf) => {
-          console.log(`Model ${modelPath} loaded successfully${isFirstLoad ? ' (FIRST TIME)' : ''}`);
+          console.log(`Model ${modelPath} loaded successfully (first time)`);
 
-          // Store in cache
+          // Important: Don't add to scene yet, just cache the original
           this.modelCache[modelPath] = gltf.scene;
 
           // Resolve with clone and first-load flag
           resolve({
             model: gltf.scene.clone(),
-            isFirstLoad: isFirstLoad
+            isFirstLoad: true
           });
         },
         (progress) => {
@@ -105,103 +104,108 @@ class VoxelModelManager {
   async placeModelAt(hexId, position, options = {}) {
     console.log(`Placing model at hex ${hexId}`, position, options);
 
+    // Check if there's already a pending request for this hex
+    const requestKey = `${hexId}_${options.modelPath || 'fallback'}`;
+    if (this.pendingModelRequests[requestKey]) {
+      console.log(`Skipping duplicate model request for hex ${hexId}`);
+      return this.pendingModelRequests[requestKey];
+    }
+
     // Remove any existing model on this hex
     this.removeModel(hexId);
 
     let model;
 
-    try {
-      if (options.modelPath) {
-        // Get model and first-load flag
-        const { model: loadedModel, isFirstLoad } = await this.loadModel(options.modelPath);
-        model = loadedModel;
+    // Create a promise for this request
+    const requestPromise = (async () => {
+      let model;
 
-        // If this is the first time loading this model, add special handling
-        if (isFirstLoad) {
-          console.log(`First time loading model ${options.modelPath}, extra setup`);
-          // Wait a frame for the model to initialize
-          await new Promise(resolve => setTimeout(resolve, 16));
+      try {
+        if (options.modelPath) {
+          // Get model and first-load flag
+          const { model: loadedModel, isFirstLoad } = await this.loadModel(options.modelPath);
+          model = loadedModel;
+
+          // First, normalize the model size by getting its bounding box
+          const bbox = new THREE.Box3().setFromObject(model);
+          const size = bbox.getSize(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z);
+
+          // Normalize to a base size of 1 unit, then apply the requested scale
+          const normalizedScale = 1 / maxDim;
+          const scale = options.scale || 1.5;
+          model.scale.set(
+            normalizedScale * scale,
+            normalizedScale * scale,
+            normalizedScale * scale
+          );
+
+          // Apply position BEFORE adding to scene
+          model.position.copy(position);
+
+          // Apply rotation if specified
+          if (options.rotation) {
+            model.rotation.x = options.rotation.x || 0;
+            model.rotation.y = options.rotation.y || 0;
+            model.rotation.z = options.rotation.z || 0;
+          }
+
+          // Add unique identifier
+          model.userData.hexId = hexId;
+          model.userData.instanceId = Date.now() + Math.random().toString(36).substring(2, 9);
+
+          // Now add to scene after all transforms are applied
+          this.scene.add(model);
+
+          // Force matrix update
+          model.updateMatrix();
+          model.updateMatrixWorld(true);
+        } else {
+          // Use fallback if no model path is specified
+          console.log('Using fallback model (no model path specified)');
+          const material = new THREE.MeshStandardMaterial({
+            color: Math.random() * 0xffffff
+          });
+          model = new THREE.Mesh(this.fallbackGeometry, material);
+
+          // Apply scale directly for fallback cube
+          const scale = options.scale || 1.5;
+          model.scale.set(scale, scale, scale);
         }
 
+        // Add a unique identifier to the model to help with debugging
+        model.userData.hexId = hexId;
+        model.userData.instanceId = Date.now() + Math.random().toString(36).substring(2, 9);
 
-        // First, normalize the model size by getting its bounding box
-        const bbox = new THREE.Box3().setFromObject(model);
-        const size = bbox.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
+        // Store reference
+        this.models[hexId] = model;
 
-        // Normalize to a base size of 1 unit, then apply the requested scale
-        const normalizedScale = 1 / maxDim;
-        const scale = options.scale || 1.5;
-        model.scale.set(
-          normalizedScale * scale,
-          normalizedScale * scale,
-          normalizedScale * scale
-        );
-      } else {
-        // Use fallback if no model path is specified
-        console.log('Using fallback model (no model path specified)');
-        const material = new THREE.MeshStandardMaterial({
-          color: Math.random() * 0xffffff
-        });
-        model = new THREE.Mesh(this.fallbackGeometry, material);
+        // Store animation parameters if animation is enabled
+        if (options.animate) {
+          this.animatedModels[hexId] = {
+            model: model,
+            initialY: position.y,
+            hoverRange: options.hoverRange || 0.2,
+            hoverSpeed: options.hoverSpeed || 1.0,
+            rotateSpeed: options.rotateSpeed || 0.5
+          };
+        }
 
-        // Apply scale directly for fallback cube
-        const scale = options.scale || 1.5;
-        model.scale.set(scale, scale, scale);
+        console.log(`Model placed at hex ${hexId}, instanceId: ${model.userData.instanceId}`);
+        return model;
+      } catch (error) {
+        console.error('Error placing model:', error);
+        return this.placeFallbackModel(hexId, position, options);
+      } finally {
+        // Remove from pending requests when done
+        delete this.pendingModelRequests[requestKey];
       }
+      this.logModelInfo();
+    })();
 
-      // Add a unique identifier to the model to help with debugging
-      model.userData.hexId = hexId;
-      model.userData.instanceId = Date.now() + Math.random().toString(36).substring(2, 9);
-
-      // Apply position
-      model.position.copy(position);
-
-      // Apply rotation if specified
-      if (options.rotation) {
-        model.rotation.x = options.rotation.x || 0;
-        model.rotation.y = options.rotation.y || 0;
-        model.rotation.z = options.rotation.z || 0;
-      }
-
-
-
-      // Add to scene
-      this.scene.add(model);
-
-      this.ensureModelReadyForAnimation(model, hexId, {
-        initialY: position.y,
-        ...options
-      });
-
-      // If this is the first animated model, reset the clock
-      if (options.animate && Object.keys(this.animatedModels).length === 0) {
-        console.log("First animated model, resetting animation clock");
-        this.resetClock();
-      }
-
-      // Store reference
-      this.models[hexId] = model;
-
-      // Store animation parameters if animation is enabled
-      if (options.animate) {
-        this.animatedModels[hexId] = {
-          model: model,
-          initialY: position.y,
-          hoverRange: options.hoverRange || 0.2,
-          hoverSpeed: options.hoverSpeed || 1.0,
-          rotateSpeed: options.rotateSpeed || 0.5
-        };
-      }
-
-      console.log(`Model placed at hex ${hexId}, instanceId: ${model.userData.instanceId}`);
-
-      return model;
-    } catch (error) {
-      console.error('Error placing model:', error);
-      return this.placeFallbackModel(hexId, position, options);
-    }
-    this.logModelInfo();
+    // Store the promise in pending requests
+    this.pendingModelRequests[requestKey] = requestPromise;
+    return requestPromise;
   }
 
   // In VoxelModelManager.js - Add this new method
@@ -271,24 +275,17 @@ class VoxelModelManager {
     const deltaTime = this.clock.getDelta();
     const time = this.clock.getElapsedTime();
 
-    // Track if this is the first animation update for any model
-    let hasNewAnimations = false;
-
     // Update each animated model
     Object.keys(this.animatedModels).forEach(hexId => {
       const animData = this.animatedModels[hexId];
       if (!animData || !animData.model) return;
 
-      // Check if this model has been animated before
-      if (!animData.hasAnimated) {
-        hasNewAnimations = true;
-        animData.hasAnimated = true;
-        console.log(`First animation update for model on hex ${hexId}`);
-
-        // Force initial position to match expected position
-        // This ensures it's not stuck in its starting position
+      // Check if this is the first animation update
+      if (!animData.initialized) {
+        // Force model to its initial position before starting animations
         animData.model.position.y = animData.initialY;
         animData.model.updateMatrixWorld(true);
+        animData.initialized = true;
       }
 
       // Apply animations
@@ -300,12 +297,10 @@ class VoxelModelManager {
       if (animData.rotateSpeed > 0) {
         animData.model.rotation.y += deltaTime * animData.rotateSpeed;
       }
-    });
 
-    // If we just started animating new models, force a scene update
-    if (hasNewAnimations) {
-      this.scene.updateMatrixWorld(true);
-    }
+      // Ensure matrix is updated after changes
+      animData.model.updateMatrix();
+    });
   }
 
   /**
@@ -330,6 +325,20 @@ class VoxelModelManager {
   resetClock() {
     this.clock = new THREE.Clock();
   }
+
+  ensureModelInitialized(model) {
+    // Make sure all child objects have matrix auto updates enabled
+    model.traverse(child => {
+      if (child.isMesh) {
+        child.matrixAutoUpdate = true;
+      }
+    });
+
+    // Force a matrix update on the model
+    model.updateMatrix();
+    model.updateMatrixWorld(true);
+  }
+
 
   // Add this method to VoxelModelManager.js
   logModelInfo() {
