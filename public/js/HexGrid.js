@@ -122,39 +122,38 @@ class HexGrid {
     // Only proceed if we have a selected hex
     if (!this.selectedHex || !this.currentRoomCode || !this.socketManager) return false;
 
-    // Prevent default scrolling behavior when adjusting hex height
-    if (event.target === document.querySelector('#canvas-container canvas')) {
-      // Get current height or default to 1
-      const currentHeight = this.selectedHex.userData.height || 1;
+    // Always handle the scroll event when there's a selected hex, regardless of where it happened
+    // This ensures that camera zoom is disabled while a hex is selected
 
-      // Calculate new height based on scroll direction
-      // Use smaller increments for finer control
-      const direction = event.deltaY > 0 ? -1 : 1;
-      const heightChange = 0.25 * direction;
-      let newHeight = Math.max(0.25, Math.min(5, currentHeight + heightChange));
+    // Get current height or default to 1
+    const currentHeight = this.selectedHex.userData.height || 1;
 
-      // Round to nearest 0.25 for cleaner values
-      newHeight = Math.round(newHeight * 4) / 4;
+    // Calculate new height based on scroll direction
+    // Use smaller increments for finer control
+    const direction = event.deltaY > 0 ? -1 : 1;
+    const heightChange = 0.25 * direction;
+    let newHeight = Math.max(0.25, Math.min(5, currentHeight + heightChange));
 
-      // Only update if height actually changed
-      if (newHeight !== currentHeight) {
-        // Create action with just the height change
-        const action = {
-          height: newHeight
-        };
+    // Round to nearest 0.25 for cleaner values
+    newHeight = Math.round(newHeight * 4) / 4;
 
-        // Send to server
-        this.socketManager.sendHexAction(
-          this.currentRoomCode,
-          this.selectedHex.userData.hexId,
-          action
-        );
+    // Only update if height actually changed
+    if (newHeight !== currentHeight) {
+      // Create action with just the height change
+      const action = {
+        height: newHeight
+      };
 
-        return true; // Event was handled
-      }
+      // Send to server
+      this.socketManager.sendHexAction(
+        this.currentRoomCode,
+        this.selectedHex.userData.hexId,
+        action
+      );
     }
 
-    return false; // Event was not handled
+    // Always return true when we have a selected hex to prevent camera zooming
+    return true;
   }
 
   /**

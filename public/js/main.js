@@ -154,18 +154,28 @@ class App {
       // Only proceed if controls are enabled
       if (!this.controls.enabled) return;
 
-      // Check if the hex grid should handle this scroll for hex height adjustment
-      const hexHandled = this.hexGrid && this.hexGrid.handleScroll ?
-        this.hexGrid.handleScroll(event) : false;
+      // Check if a hex is selected (in which case we prioritize height adjustment)
+      if (this.hexGrid && this.hexGrid.selectedHex) {
+        // Let the hex grid handle the scroll event for height adjustment
+        const hexHandled = this.hexGrid.handleScroll(event);
 
-      // If hex grid didn't handle it, use it for camera zoom
-      if (!hexHandled) {
-        // Let OrbitControls handle the zooming naturally
-        // No need to prevent default as OrbitControls will do that if it handles the event
-      } else {
-        // If hex grid handled it, prevent browser default scrolling
+        // Always prevent default and stop propagation when a hex is selected
+        // to avoid camera zooming interference
         event.preventDefault();
+        event.stopPropagation();
+
+        // Disable OrbitControls zoom temporarily
+        this.controls.enableZoom = false;
+        // console.log('Zoom disabled');
+
+        return;
+      } else {
+        this.controls.enableZoom = true;
+        // console.log('Zoom enabled');
       }
+
+      // If no hex is selected, let OrbitControls handle the zooming normally
+      // No need to prevent default as OrbitControls will do that
     }, { passive: false });
 
     // Add lighting
