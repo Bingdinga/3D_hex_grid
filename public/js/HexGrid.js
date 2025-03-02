@@ -185,38 +185,50 @@ class HexGrid {
  * @param {SocketManager} socketManager - Socket manager for syncing
  * @param {number} intensity - Tint intensity between 0 and 1
  */
-  applyRandomTints(roomCode, socketManager, intensity = 0.5) {
+  /**
+ * Apply a single color tint to all hexes
+ * @param {string} roomCode - Current room code for syncing
+ * @param {SocketManager} socketManager - Socket manager for syncing
+ * @param {number} intensity - Tint intensity between 0 and 1
+ */
+  applyRandomTints(roomCode, socketManager, intensity = 0.7) {
     // Skip if we're not in a room or don't have a socket manager
     if (!roomCode || !socketManager) {
       console.warn('Cannot apply tints: not in a room or socket manager not available');
       return;
     }
 
-    console.log(`Applying random tints with intensity ${intensity}`);
-
-    // Add this near the beginning of applyRandomTints
-    console.log(`Starting tint application for ${hexIds.length} hexes`);
+    if (!this.hexMeshes || Object.keys(this.hexMeshes).length === 0) {
+      console.warn('Cannot apply tints: no hexes found in grid');
+      return;
+    }
 
     // Process all hexes in batches to avoid freezing the UI
     const hexIds = Object.keys(this.hexMeshes);
+    console.log(`Starting tint application for ${hexIds.length} hexes`);
+
+    // IMPORTANT CHANGE: Generate ONE random color to use for all hexes
+    // Generate a random hue
+    const hue = Math.random();
+    const saturation = 0.5 + Math.random() * 0.5; // 0.5-1.0
+    const lightness = 0.1 + Math.random() * 0.2; // 0.1-0.3
+
+    // Create a color from HSL
+    const tintColor = new THREE.Color();
+    tintColor.setHSL(hue, saturation, lightness);
+
+    console.log(`Using shared tint color: HSL(${hue.toFixed(2)}, ${saturation.toFixed(2)}, ${lightness.toFixed(2)})`);
+
     const batchSize = 20;
 
     // Function to process a batch
     const processBatch = (startIndex) => {
       const endIndex = Math.min(startIndex + batchSize, hexIds.length);
+      console.log(`Processing batch ${startIndex}-${endIndex} of ${hexIds.length} hexes`);
 
       for (let i = startIndex; i < endIndex; i++) {
         const hexId = hexIds[i];
         const hex = this.hexMeshes[hexId];
-
-        // Generate a random hue
-        const hue = Math.random();
-        const saturation = 0.5 + Math.random() * 0.5; // 0.5-1.0
-        const lightness = 0.4 + Math.random() * 0.3; // 0.4-0.7
-
-        // Create a color from HSL
-        const color = new THREE.Color();
-        color.setHSL(hue, saturation, lightness);
 
         // Get current color if it exists
         let currentColor;
@@ -230,26 +242,26 @@ class HexGrid {
           currentColor = new THREE.Color(0x3498db);
         }
 
-        // Blend the current color with the new tint based on intensity
+        // Blend the current color with the single tint color based on intensity
         const blendedColor = new THREE.Color(
-          currentColor.r * (1 - intensity) + color.r * intensity,
-          currentColor.g * (1 - intensity) + color.g * intensity,
-          currentColor.b * (1 - intensity) + color.b * intensity
+          currentColor.r * (1 - intensity) + tintColor.r * intensity,
+          currentColor.g * (1 - intensity) + tintColor.g * intensity,
+          currentColor.b * (1 - intensity) + tintColor.b * intensity
         );
 
-        // ===== IMPORTANT: Apply color directly to hex =====
-        // This immediate local change helps debug if socket sync is the issue
-        if (Array.isArray(hex.material) && hex.material[0]) {
-          hex.material[0].color.copy(blendedColor);
+        // Apply color directly to hex
+        if (Array.isArray(hex.material)) {
+          if (hex.material[0]) {
+            // Top face for extruded hexes
+            hex.material[0].color.copy(blendedColor);
+          }
         } else if (hex.material) {
+          // Single material case
           hex.material.color.copy(blendedColor);
         }
 
         // Store the new color in userData
         hex.userData.customColor = blendedColor.clone();
-
-        // And add this right after blending colors
-        console.log(`Hex ${hexId}: Blended color is ${blendedColor.getHexString()}`);
 
         // Create action with the color change but preserve height
         const action = {
@@ -269,6 +281,8 @@ class HexGrid {
       // Process next batch if there are more hexes
       if (endIndex < hexIds.length) {
         setTimeout(() => processBatch(endIndex), 50);
+      } else {
+        console.log(`Tint application complete for all ${hexIds.length} hexes`);
       }
     };
 
@@ -327,7 +341,7 @@ class HexGrid {
     // Use smaller increments for finer control
     const direction = event.deltaY > 0 ? -1 : 1;
     const heightChange = 0.25 * direction;
-    let newHeight = Math.max(0.25, Math.min(5, currentHeight + heightChange));
+    let newHeight = Math.max(0.25, currentHeight + heightChange);
 
     // Round to nearest 0.25 for cleaner values
     newHeight = Math.round(newHeight * 4) / 4;

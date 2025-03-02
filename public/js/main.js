@@ -147,14 +147,6 @@ class App {
       }
     });
 
-    // Add keyboard shortcut for generating terrain (press 'T' key)
-    window.addEventListener('keydown', (event) => {
-      // Generate terrain with 'T' key
-      if (event.key === 't' || event.key === 'T') {
-        this.generateTerrain();
-      }
-    });
-
     window.addEventListener('mouseup', () => {
       this.controls.isMouseDown = false;
       this.controls.isMouseMoving = false;
@@ -672,7 +664,7 @@ class App {
       // Use consistent amplitude values, not decreasing over time
       // Can make this even higher if desired
       const scale = 0.1 + Math.random() * 0.05;  // 0.1-0.15 
-      const amplitude = 4.0 + Math.random() * 2.0;  // 4.0-6.0 (increased from 2.5-3.5)
+      const amplitude = 7.0 + Math.random() * 2.0;  // 4.0-6.0 (increased from 2.5-3.5)
       const octaves = 3 + Math.floor(Math.random() * 2);  // 3-4
 
       this.hexGrid.generateTerrain(
