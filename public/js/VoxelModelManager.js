@@ -126,6 +126,9 @@ class VoxelModelManager {
           const { model: loadedModel, isFirstLoad } = await this.loadModel(options.modelPath);
           model = loadedModel;
 
+          // Center the model origin point (add this line)
+          model = this.centerModelOrigin(loadedModel);
+
           // First, normalize the model size by getting its bounding box
           const bbox = new THREE.Box3().setFromObject(model);
           const size = bbox.getSize(new THREE.Vector3());
@@ -320,6 +323,33 @@ class VoxelModelManager {
 
       console.log(`Model removed from hex ${hexId}`);
     }
+  }
+
+  /**
+ * Centers a model's origin point to its geometric center
+ * @param {THREE.Object3D} model - The model to center
+ * @returns {THREE.Object3D} The centered model
+ */
+  centerModelOrigin(model) {
+    // Calculate the bounding box of the model
+    const bbox = new THREE.Box3().setFromObject(model);
+
+    // Calculate the center of the bounding box
+    const center = bbox.getCenter(new THREE.Vector3());
+
+    // Create a parent container
+    const container = new THREE.Object3D();
+
+    // Add model to container
+    container.add(model);
+
+    // Offset the model within the container to center its origin
+    model.position.sub(center);
+
+    // Store the original center for reference if needed
+    container.userData.originalCenter = center.clone();
+
+    return container;
   }
 
   resetClock() {
