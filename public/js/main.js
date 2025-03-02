@@ -81,6 +81,14 @@ class App {
       }
     }, { passive: false });
 
+    // Add keyboard shortcut for toggling axes helper (press 'X' key)
+    window.addEventListener('keydown', (event) => {
+      // Toggle axes helper with 'X' key
+      if (event.key === 'x' || event.key === 'X') {
+        this.toggleAxesHelper();
+      }
+    });
+
     // Disable context menu (right-click) for the application
     document.getElementById('game-container').addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -125,6 +133,11 @@ class App {
     // Add a simple grid for reference
     const gridHelper = new THREE.GridHelper(30, 30, 0x555555, 0x333333);
     this.scene.add(gridHelper);
+
+    // Add axes helper for debugging (X = red, Y = green, Z = blue)
+    this.axesHelper = new THREE.AxesHelper(10); // 10 is the size of the axes
+    this.scene.add(this.axesHelper);
+    this.axesHelper.visible = false; // Hidden by default
 
     // Set up mouse position tracking
     this.mouse = new THREE.Vector2();
@@ -667,6 +680,16 @@ class App {
 
     // Render
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /**
+ * Toggle the visibility of the coordinate axes
+ */
+  toggleAxesHelper() {
+    if (this.axesHelper) {
+      this.axesHelper.visible = !this.axesHelper.visible;
+      console.log(`Axes helper is now ${this.axesHelper.visible ? 'visible' : 'hidden'}`);
+    }
   }
 }
 

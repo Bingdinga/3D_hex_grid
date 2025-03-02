@@ -7,48 +7,56 @@ class HexGrid {
     this.hexUtils = new HexUtils(hexSize);
     this.radius = radius;
     this.hexMeshes = {}; // Maps hex IDs to their meshes
+    this.sphereObjects = {}; // Maps hex IDs to their sphere objects
     this.selectedHex = null;
     this.hoverHex = null;
     this.currentRoomCode = null; // We'll need to know the room code for updates
     this.socketManager = null; // Reference to socket manager for sending updates
-    
+
     // Set smaller radius for mobile devices to improve performance
     if (this.detectMobile()) {
       this.radius = Math.min(radius, 8); // Reduce radius on mobile for performance
     }
-    
+
     // Create materials
-    this.defaultMaterial = new THREE.MeshLambertMaterial({ 
-      color: 0x3498db, 
-      transparent: true, 
+    this.defaultMaterial = new THREE.MeshLambertMaterial({
+      color: 0x3498db,
+      transparent: true,
       opacity: 0.7,
-      side: THREE.DoubleSide 
+      side: THREE.DoubleSide
     });
-    
-    this.hoverMaterial = new THREE.MeshLambertMaterial({ 
-      color: 0x2ecc71, 
-      transparent: true, 
+
+    this.hoverMaterial = new THREE.MeshLambertMaterial({
+      color: 0x2ecc71,
+      transparent: true,
       opacity: 0.8,
-      side: THREE.DoubleSide 
+      side: THREE.DoubleSide
     });
-    
-    this.selectedMaterial = new THREE.MeshLambertMaterial({ 
-      color: 0xe74c3c, 
-      transparent: true, 
+
+    this.selectedMaterial = new THREE.MeshLambertMaterial({
+      color: 0xe74c3c,
+      transparent: true,
       opacity: 0.9,
-      side: THREE.DoubleSide 
+      side: THREE.DoubleSide
     });
-    
+
+    // Create sphere material
+    this.sphereMaterial = new THREE.MeshLambertMaterial({
+      color: 0xf39c12, // Orange color for the sphere
+      transparent: false,
+      side: THREE.DoubleSide
+    });
+
     // Create raycaster for hex selection
     this.raycaster = new THREE.Raycaster();
-    
+
     // Initialize
     this.createGrid();
-    
+
     // Add scroll listener for height adjustment of selected hex
     window.addEventListener('wheel', this.handleScroll.bind(this));
   }
-  
+
   /**
    * Set the socket manager reference
    * @param {SocketManager} socketManager - Reference to socket manager
@@ -56,7 +64,7 @@ class HexGrid {
   setSocketManager(socketManager) {
     this.socketManager = socketManager;
   }
-  
+
   /**
    * Set the current room code
    * @param {string} roomCode - Current room code
@@ -64,7 +72,7 @@ class HexGrid {
   setRoomCode(roomCode) {
     this.currentRoomCode = roomCode;
   }
-  
+
   /**
    * Handle scroll wheel events to adjust selected hex height
    * @param {WheelEvent} event - Mouse wheel event
@@ -72,30 +80,30 @@ class HexGrid {
   handleScroll(event) {
     // Only proceed if we have a selected hex
     if (!this.selectedHex || !this.currentRoomCode || !this.socketManager) return;
-    
+
     // Prevent default scrolling behavior when adjusting hex height
     if (event.target === document.querySelector('#canvas-container canvas')) {
       event.preventDefault();
-      
+
       // Get current height or default to 1
       const currentHeight = this.selectedHex.userData.height || 1;
-      
+
       // Calculate new height based on scroll direction
       // Use smaller increments for finer control
       const direction = event.deltaY > 0 ? -1 : 1;
       const heightChange = 0.25 * direction;
       let newHeight = Math.max(0.25, Math.min(5, currentHeight + heightChange));
-      
+
       // Round to nearest 0.25 for cleaner values
       newHeight = Math.round(newHeight * 4) / 4;
-      
+
       // Only update if height actually changed
       if (newHeight !== currentHeight) {
         // Create action with just the height change
         const action = {
           height: newHeight
         };
-        
+
         // Send to server
         this.socketManager.sendHexAction(
           this.currentRoomCode,
@@ -107,7 +115,7 @@ class HexGrid {
     }
     return false; //Not handled
   }
-  
+
   /**
    * Detect if the user is on a mobile device
    * @returns {boolean} True if on mobile device
@@ -115,54 +123,54 @@ class HexGrid {
   detectMobile() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   }
-  
+
   /**
    * Create the hexagonal grid
    */
   createGrid() {
     const hexes = this.hexUtils.getHexesInRadius(0, 0, this.radius);
-    
+
     // Process each hex in the grid
     hexes.forEach(hex => {
       const { q, r } = hex;
       const hexId = this.hexUtils.getHexId(q, r);
-      
+
       // Create hexagon shape
       const corners = this.hexUtils.getHexCorners(q, r);
       const hexShape = new THREE.Shape();
-      
+
       // Move to first corner
       hexShape.moveTo(corners[0].x, corners[0].z);
-      
+
       // Draw lines to each corner
       for (let i = 1; i < corners.length; i++) {
         hexShape.lineTo(corners[i].x, corners[i].z);
       }
-      
+
       // Close the shape
       hexShape.lineTo(corners[0].x, corners[0].z);
-      
+
       // Create geometry from shape
       const geometry = new THREE.ShapeGeometry(hexShape);
-      
+
       // Rotate to lie flat on xz plane
       geometry.rotateX(-Math.PI / 2);
-      
+
       // Create mesh
       const mesh = new THREE.Mesh(geometry, this.defaultMaterial.clone());
-      
+
       // Position slightly above the ground plane to avoid z-fighting
       mesh.position.y = 0.01;
-      
+
       // Store hex data
       mesh.userData = { q, r, hexId, height: 0.01 };
-      
+
       // Add to scene and store reference
       this.scene.add(mesh);
       this.hexMeshes[hexId] = mesh;
     });
   }
-  
+
   /**
    * Handle mouse/touch movement for hex highlighting
    * @param {THREE.Vector2} pointerPosition - Normalized mouse/touch position
@@ -179,33 +187,33 @@ class HexGrid {
       }
       return null;
     }
-    
+
     this.raycaster.setFromCamera(pointerPosition, camera);
-    
+
     // Find intersections
     const intersects = this.raycaster.intersectObjects(Object.values(this.hexMeshes));
-    
+
     // Clear previous hover (but not if it's the selected hex)
     if (this.hoverHex && this.hoverHex !== this.selectedHex) {
       this.hoverHex.material = this.defaultMaterial.clone();
     }
-    
+
     // Set new hover - but only on desktop
     if (intersects.length > 0) {
       const hex = intersects[0].object;
-      
+
       if (hex !== this.selectedHex) {
         hex.material = this.hoverMaterial.clone();
         this.hoverHex = hex;
       }
-      
+
       return hex;
     }
-    
+
     this.hoverHex = null;
     return null;
   }
-  
+
   /**
    * Handle mouse click or touch tap for hex selection
    * @param {THREE.Vector2} pointerPosition - Normalized mouse/touch position
@@ -214,30 +222,36 @@ class HexGrid {
    */
   handleClick(pointerPosition, camera) {
     this.raycaster.setFromCamera(pointerPosition, camera);
-    
+
     // Add some tolerance for touch input
     if (this.detectMobile()) {
       this.raycaster.params.Line.threshold = 0.1;
       this.raycaster.params.Points.threshold = 0.1;
     }
-    
+
     // Find intersections
     const intersects = this.raycaster.intersectObjects(Object.values(this.hexMeshes));
-    
+
     // Clear previous selection visual (but maintain selected hex)
     if (this.selectedHex) {
       // Restore default material to previous selection
       this.selectedHex.material = this.defaultMaterial.clone();
     }
-    
+
     // If we clicked on a hex, select it
     if (intersects.length > 0) {
       const hex = intersects[0].object;
-      
+
       // Apply selection material
       hex.material = this.selectedMaterial.clone();
       this.selectedHex = hex;
-      
+
+      // Spawn a sphere above the selected hex
+      this.spawnSphereAboveHex(hex.userData.hexId);
+
+      // Add this:
+      this.createHexCenterMarker(hex.userData.hexId);
+
       return {
         hexId: hex.userData.hexId,
         q: hex.userData.q,
@@ -249,7 +263,7 @@ class HexGrid {
       return null;
     }
   }
-  
+
   /**
    * Update a hex's appearance based on its state
    * @param {string} hexId - Hex ID
@@ -258,36 +272,39 @@ class HexGrid {
   updateHexState(hexId, state) {
     const hex = this.hexMeshes[hexId];
     if (!hex) return;
-    
+
     // Keep track if this is the currently selected hex
     const wasSelected = hex === this.selectedHex;
     const wasHover = hex === this.hoverHex;
-    
+
     // Store current height or use default if not available
     const currentHeight = hex.userData.height || 0.01;
-    
+
     // Apply color change if specified
     if (state.color) {
       // Create a new material to avoid modifying shared materials
-      const newMaterial = wasSelected ? 
-        this.selectedMaterial.clone() : 
+      const newMaterial = wasSelected ?
+        this.selectedMaterial.clone() :
         (wasHover ? this.hoverMaterial.clone() : this.defaultMaterial.clone());
-      
+
       // Set the new color
       newMaterial.color.set(state.color);
       hex.material = newMaterial;
     }
-    
+
     // Then handle extrusion if height is specified
     if (state.height !== undefined) {
       // Store the new height in user data
       hex.userData.height = state.height;
-      
+
       // Extrude the hex to create a 3D column
       this.extrudeHex(hex, state.height);
+
+      // Update any sphere that might be on this hex
+      this.updateSpherePosition(hexId);
     }
   }
-  
+
   /**
    * Extrude a hex to create a 3D column
    * @param {THREE.Mesh} hexMesh - The hex mesh to extrude
@@ -296,18 +313,18 @@ class HexGrid {
   extrudeHex(hexMesh, height) {
     const { q, r } = hexMesh.userData;
     const hexId = hexMesh.userData.hexId;
-    
+
     // Store selection state and material
     const wasSelected = hexMesh === this.selectedHex;
     const wasHover = hexMesh === this.hoverHex;
     const currentMaterial = hexMesh.material.clone();
-    
+
     // Remove old mesh
     this.scene.remove(hexMesh);
-    
+
     // Create corners
     const corners = this.hexUtils.getHexCorners(q, r);
-    
+
     // Create extruded geometry
     const shape = new THREE.Shape();
     shape.moveTo(corners[0].x, corners[0].z);
@@ -315,39 +332,197 @@ class HexGrid {
       shape.lineTo(corners[i].x, corners[i].z);
     }
     shape.lineTo(corners[0].x, corners[0].z);
-    
+
     // Extrusion settings
     const extrudeSettings = {
       steps: 1,
       depth: height,
       bevelEnabled: false
     };
-    
+
     // Create extruded geometry
     const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-    
+
     // Rotate to correct orientation (extrude along Y axis)
     geometry.rotateX(-Math.PI / 2);
-    
+
     // Create new mesh with the same material
     const newMesh = new THREE.Mesh(geometry, currentMaterial);
-    
+
     // Copy user data, including height
     newMesh.userData = { q, r, hexId, height };
-    
+
     // Add to scene
     this.scene.add(newMesh);
-    
+
     // Store reference to replace the old one
     this.hexMeshes[hexId] = newMesh;
-    
+
     // Restore selection state if needed
     if (wasSelected) {
       this.selectedHex = newMesh;
     }
-    
+
     if (wasHover) {
       this.hoverHex = newMesh;
     }
+  }
+
+  /**
+ * Spawns or updates a sphere above a hexagon
+ * @param {string} hexId - ID of the hex to place the sphere above
+ * @param {Object} options - Optional properties for the sphere
+ */
+  spawnSphereAboveHex(hexId, options = {}) {
+    const hex = this.hexMeshes[hexId];
+    if (!hex) return;
+
+    // Default options
+    const sphereOptions = {
+      radius: options.radius || 0.5,
+      color: options.color || 0xf39c12,
+      height: options.height || 1.5 // Height above the hex
+    };
+
+    // If this hex already has a sphere, remove it first
+    if (this.sphereObjects[hexId]) {
+      this.scene.remove(this.sphereObjects[hexId]);
+    }
+
+    // Create sphere geometry
+    const geometry = new THREE.SphereGeometry(sphereOptions.radius, 16, 16);
+
+    // Create material (clone the default or use a custom color)
+    const material = this.sphereMaterial.clone();
+    if (sphereOptions.color) {
+      material.color.set(sphereOptions.color);
+    }
+
+    // Create mesh
+    const sphere = new THREE.Mesh(geometry, material);
+
+    // Position the sphere
+    const position = this.hexUtils.getObjectPosition(
+      hex.userData.q,
+      hex.userData.r,
+      hex.userData.height + sphereOptions.heightOffset
+    );
+    sphere.position.copy(position);
+
+    // Store the height offset in user data so we can maintain it during updates
+    sphere.userData = {
+      heightOffset: sphereOptions.heightOffset
+    };
+
+    // Position the sphere
+    sphere.position.set(
+      position.x,  // x coordinate from hex position
+      hex.userData.height + sphereOptions.heightOffset, // Fixed height above the hex
+      position.z   // z coordinate from hex position
+    );
+
+    // Add to scene
+    this.scene.add(sphere);
+
+    // Store reference
+    this.sphereObjects[hexId] = sphere;
+
+    return sphere;
+  }
+
+  /**
+ * Updates the position of a sphere when its hex changes height
+ * @param {string} hexId - ID of the hex
+ */
+  updateSpherePosition(hexId) {
+    const sphere = this.sphereObjects[hexId];
+    const hex = this.hexMeshes[hexId];
+
+    if (!sphere || !hex) return;
+
+    // Use the stored height offset to position the sphere
+    const heightOffset = sphere.userData.heightOffset || 2.0;
+
+    // Update the y position to maintain fixed distance above the hex
+    sphere.position.y = hex.userData.height + heightOffset;
+  }
+
+  /**
+ * Create a visual marker at the center of a hex for debugging
+ * @param {string} hexId - ID of the hex
+ */
+  createHexCenterMarker(hexId) {
+    const hex = this.hexMeshes[hexId];
+    if (!hex) return;
+
+    // Remove any existing marker
+    if (this.centerMarker) {
+      this.scene.remove(this.centerMarker);
+    }
+
+    // Create a small sphere to mark the hex center
+    const geometry = new THREE.SphereGeometry(0.1, 8, 8);
+    const material = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // Red
+    this.centerMarker = new THREE.Mesh(geometry, material);
+
+    // Position at hex center
+    const position = this.hexUtils.getObjectPosition(hex.userData.q, hex.userData.r, 0);
+    this.centerMarker.position.copy(position);
+
+    // Add to scene
+    this.scene.add(this.centerMarker);
+
+    // Log the position for debugging
+    console.log('Hex center position:', {
+      hexId,
+      q: hex.userData.q,
+      r: hex.userData.r,
+      position: position,
+      worldPosition: this.centerMarker.position
+    });
+  }
+
+  /**
+ * Debug method to visualize coordinates and check transformations
+ */
+  debugCoordinates() {
+    // Create arrows showing the coordinate axes at origin
+    const origin = new THREE.Vector3(0, 0, 0);
+
+    // X axis (red)
+    const xDir = new THREE.Vector3(1, 0, 0);
+    const xArrow = new THREE.ArrowHelper(xDir, origin, 2, 0xff0000, 0.2, 0.1);
+    this.scene.add(xArrow);
+
+    // Y axis (green)
+    const yDir = new THREE.Vector3(0, 1, 0);
+    const yArrow = new THREE.ArrowHelper(yDir, origin, 2, 0x00ff00, 0.2, 0.1);
+    this.scene.add(yArrow);
+
+    // Z axis (blue)
+    const zDir = new THREE.Vector3(0, 0, 1);
+    const zArrow = new THREE.ArrowHelper(zDir, origin, 2, 0x0000ff, 0.2, 0.1);
+    this.scene.add(zArrow);
+
+    // Add a small sphere at coordinate (1,1) to test the transformation
+    const testCoord = this.hexUtils.axialToPixel(1, 1);
+    console.log('Test coordinate (1,1) transforms to:', testCoord);
+
+    const testSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffff00 })
+    );
+    testSphere.position.copy(testCoord);
+    this.scene.add(testSphere);
+
+    // Add another sphere with manual negative z
+    const testSphere2 = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xff00ff })
+    );
+    testSphere2.position.set(testCoord.x, testCoord.y, -testCoord.z);
+    this.scene.add(testSphere2);
+
+    console.log('Debug coordinates visualization added');
   }
 }
