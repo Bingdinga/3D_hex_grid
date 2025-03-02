@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { HexUtils } from './HexUtils.js';
 import { VoxelModelManager } from './VoxelModelManager.js';
+import { NoiseGenerator } from './NoiseGenerator.js';
 
 /**
  * HexGrid class handles creating and managing a hexagonal grid in Three.js
@@ -103,6 +104,176 @@ class HexGrid {
    */
   setSocketManager(socketManager) {
     this.socketManager = socketManager;
+  }
+
+  /**
+ * Generate terrain using noise
+ * @param {number} scale - Scale of the noise pattern (higher = more zoomed in)
+ * @param {number} amplitude - Maximum height of the terrain
+ * @param {number} octaves - Number of noise layers (more = more detail)
+ * @param {string} roomCode - Current room code for syncing
+ * @param {SocketManager} socketManager - Socket manager for syncing
+ */
+  generateTerrain(scale = 0.1, amplitude = 3.0, octaves = 4, roomCode, socketManager) {
+    // Skip if we're not in a room or don't have a socket manager
+    if (!roomCode || !socketManager) {
+      console.warn('Cannot generate terrain: not in a room or socket manager not available');
+      return;
+    }
+
+    console.log(`Generating terrain with scale=${scale}, amplitude=${amplitude}, octaves=${octaves}`);
+
+    // Create noise generator with a random seed
+    const noiseGen = new NoiseGenerator(Math.random() * 1000);
+
+    // Process all hexes in batches to avoid freezing the UI
+    const hexIds = Object.keys(this.hexMeshes);
+    const batchSize = 20;
+
+    // Function to process a batch
+    const processBatch = (startIndex) => {
+      const endIndex = Math.min(startIndex + batchSize, hexIds.length);
+
+      for (let i = startIndex; i < endIndex; i++) {
+        const hexId = hexIds[i];
+        const hex = this.hexMeshes[hexId];
+        const { q, r } = hex.userData;
+
+        // Generate height using noise
+        // Use q,r coordinates for noise input, scaled appropriately
+        const noiseValue = noiseGen.fractalNoise(q * scale, r * scale, octaves);
+
+        // Calculate height based on noise (adding a small minimum height)
+        const height = 0.25 + noiseValue * amplitude;
+
+        // Round to nearest 0.25 for cleaner values
+        const roundedHeight = Math.round(height * 4) / 4;
+
+        // Create action with the height change
+        const action = {
+          height: roundedHeight
+        };
+
+        // IMPORTANT: Preserve existing color if it exists
+        if (hex.userData.customColor) {
+          action.color = '#' + hex.userData.customColor.getHexString();
+        } else if (hex.material && hex.material[0] && hex.material[0].color) {
+          action.color = '#' + hex.material[0].color.getHexString();
+        }
+
+        // Send to server
+        socketManager.sendHexAction(
+          roomCode,
+          hexId,
+          action
+        );
+      }
+
+      // Process next batch if there are more hexes
+      if (endIndex < hexIds.length) {
+        setTimeout(() => processBatch(endIndex), 50);
+      }
+    };
+
+    // Start processing batches
+    processBatch(0);
+  }
+
+  /**
+ * Apply a random color tint to the top of each hex
+ * @param {string} roomCode - Current room code for syncing
+ * @param {SocketManager} socketManager - Socket manager for syncing
+ * @param {number} intensity - Tint intensity between 0 and 1
+ */
+  applyRandomTints(roomCode, socketManager, intensity = 0.5) {
+    // Skip if we're not in a room or don't have a socket manager
+    if (!roomCode || !socketManager) {
+      console.warn('Cannot apply tints: not in a room or socket manager not available');
+      return;
+    }
+
+    console.log(`Applying random tints with intensity ${intensity}`);
+
+    // Add this near the beginning of applyRandomTints
+    console.log(`Starting tint application for ${hexIds.length} hexes`);
+
+    // Process all hexes in batches to avoid freezing the UI
+    const hexIds = Object.keys(this.hexMeshes);
+    const batchSize = 20;
+
+    // Function to process a batch
+    const processBatch = (startIndex) => {
+      const endIndex = Math.min(startIndex + batchSize, hexIds.length);
+
+      for (let i = startIndex; i < endIndex; i++) {
+        const hexId = hexIds[i];
+        const hex = this.hexMeshes[hexId];
+
+        // Generate a random hue
+        const hue = Math.random();
+        const saturation = 0.5 + Math.random() * 0.5; // 0.5-1.0
+        const lightness = 0.4 + Math.random() * 0.3; // 0.4-0.7
+
+        // Create a color from HSL
+        const color = new THREE.Color();
+        color.setHSL(hue, saturation, lightness);
+
+        // Get current color if it exists
+        let currentColor;
+        if (hex.userData.customColor) {
+          currentColor = hex.userData.customColor.clone();
+        } else if (Array.isArray(hex.material) && hex.material[0] && hex.material[0].color) {
+          currentColor = hex.material[0].color.clone();
+        } else if (hex.material && hex.material.color) {
+          currentColor = hex.material.color.clone();
+        } else {
+          currentColor = new THREE.Color(0x3498db);
+        }
+
+        // Blend the current color with the new tint based on intensity
+        const blendedColor = new THREE.Color(
+          currentColor.r * (1 - intensity) + color.r * intensity,
+          currentColor.g * (1 - intensity) + color.g * intensity,
+          currentColor.b * (1 - intensity) + color.b * intensity
+        );
+
+        // ===== IMPORTANT: Apply color directly to hex =====
+        // This immediate local change helps debug if socket sync is the issue
+        if (Array.isArray(hex.material) && hex.material[0]) {
+          hex.material[0].color.copy(blendedColor);
+        } else if (hex.material) {
+          hex.material.color.copy(blendedColor);
+        }
+
+        // Store the new color in userData
+        hex.userData.customColor = blendedColor.clone();
+
+        // And add this right after blending colors
+        console.log(`Hex ${hexId}: Blended color is ${blendedColor.getHexString()}`);
+
+        // Create action with the color change but preserve height
+        const action = {
+          color: '#' + blendedColor.getHexString(),
+          // Preserve current height
+          height: hex.userData.height
+        };
+
+        // Send to server
+        socketManager.sendHexAction(
+          roomCode,
+          hexId,
+          action
+        );
+      }
+
+      // Process next batch if there are more hexes
+      if (endIndex < hexIds.length) {
+        setTimeout(() => processBatch(endIndex), 50);
+      }
+    };
+
+    // Start processing batches
+    processBatch(0);
   }
 
   /**
@@ -433,9 +604,28 @@ class HexGrid {
     const currentHeight = hex.userData.height || 0.01;
 
     // Apply color change if specified
-    // In the updateHexState method, modify the color change section:
-    // Apply color change if specified
     if (state.color) {
+      const newColor = new THREE.Color(state.color);
+
+      // Store the color in userData for future reference
+      hex.userData.customColor = newColor.clone();
+
+
+      // Apply color to materials
+      if (Array.isArray(hex.material)) {
+        // For extruded hexes with multiple materials
+        hex.material[0].color.copy(newColor);
+
+        // Log for debugging
+        console.log(`Applied color ${state.color} to hex ${hexId} (multi-material)`);
+      } else {
+        // For flat hexes with single material
+        hex.material.color.copy(newColor);
+
+        // Log for debugging
+        console.log(`Applied color ${state.color} to hex ${hexId} (single material)`);
+      }
+
       // With our new material setup, we need to handle multi-material objects
       if (hex.material.length) {
         // First material is the top face
@@ -508,9 +698,25 @@ class HexGrid {
     const wasSelected = hexMesh === this.selectedHex;
     const wasHover = hexMesh === this.hoverHex;
 
-    const currentColor = hexMesh.material && hexMesh.material.color ?
-      hexMesh.material.color.clone() :
-      new THREE.Color(0x3498db); // Fallback to default blue if no color available
+    // Get current color - check various places the color might be stored
+    let currentColor;
+
+    // First check userData for stored custom color
+    if (hexMesh.userData.customColor) {
+      currentColor = hexMesh.userData.customColor.clone();
+    }
+    // Then check the top material if it's a multi-material mesh
+    else if (Array.isArray(hexMesh.material) && hexMesh.material[0] && hexMesh.material[0].color) {
+      currentColor = hexMesh.material[0].color.clone();
+    }
+    // Finally check if it's a single material
+    else if (hexMesh.material && hexMesh.material.color) {
+      currentColor = hexMesh.material.color.clone();
+    }
+    // Default fallback
+    else {
+      currentColor = new THREE.Color(0x3498db);
+    }
 
     // Remove old mesh
     this.scene.remove(hexMesh);
@@ -542,21 +748,9 @@ class HexGrid {
     // Create materials array for different faces
     const sideMaterial = this.cobbleMaterial.clone();
 
-    // In the extrudeHex method, after creating the sideMaterial:
-    // Set texture repeat based on height for more of a "stacked blocks" look
-    // sideMaterial.map.repeat.set(1, Math.max(1, Math.floor(height)));
-
-    // Create top material (can be colored differently)
+    // Create top material with preserved color
     const topMaterial = this.cobbleTopMaterial.clone();
-
-    // If the hex was selected or hovered, tint the top material
-    if (wasSelected) {
-      topMaterial.color.set(this.selectedMaterial.color);
-    } else if (wasHover) {
-      topMaterial.color.set(this.hoverMaterial.color);
-    } else {
-      topMaterial.color.set(currentColor);
-    }
+    topMaterial.color.copy(currentColor);
 
     // Create materials array - index 0 is top face, index 1 is sides
     const materials = [topMaterial, sideMaterial];
@@ -564,8 +758,14 @@ class HexGrid {
     // Create mesh with material array
     const newMesh = new THREE.Mesh(geometry, materials);
 
-    // Copy user data, including height
-    newMesh.userData = { q, r, hexId, height };
+    // Copy user data, including height AND store color
+    newMesh.userData = {
+      q,
+      r,
+      hexId,
+      height,
+      customColor: currentColor.clone() // Important: Store the color in userData
+    };
 
     // Add to scene
     this.scene.add(newMesh);

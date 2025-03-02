@@ -147,9 +147,31 @@ class App {
       }
     });
 
+    // Add keyboard shortcut for generating terrain (press 'T' key)
+    window.addEventListener('keydown', (event) => {
+      // Generate terrain with 'T' key
+      if (event.key === 't' || event.key === 'T') {
+        this.generateTerrain();
+      }
+    });
+
     window.addEventListener('mouseup', () => {
       this.controls.isMouseDown = false;
       this.controls.isMouseMoving = false;
+    });
+
+    // Add this to the keyboard event listeners in preventDefaultTouchBehavior method
+    window.addEventListener('keydown', (event) => {
+      // Generate terrain with 'T' key
+      if (event.key === 't' || event.key === 'T') {
+        if (event.shiftKey) {
+          // Shift+T: Apply random color tints
+          this.applyRandomTints();
+        } else {
+          // Plain T: Generate terrain
+          this.generateTerrain();
+        }
+      }
     });
 
     // Add this to the initThree method, near where the other event listeners are defined
@@ -463,7 +485,7 @@ class App {
       if (this.hexGrid && typeof this.hexGrid.playAnimationOnHex === 'function') {
         this.hexGrid.playAnimationOnHex(selectedHex.hexId);
       }
-      
+
     }
   }
 
@@ -539,6 +561,39 @@ class App {
   }
 
   /**
+ * Apply random color tints to hex tops
+ */
+  applyRandomTints() {
+    // Only apply tints if we're in a room
+    if (!this.currentRoomCode || !this.socketManager) {
+      console.warn('Cannot apply tints: not in a room');
+      if (this.ui && typeof this.ui.showToast === 'function') {
+        this.ui.showToast('Join a room first to apply tints', 'error');
+      }
+      return;
+    }
+
+    // Check if the hex grid has the tinting method
+    if (this.hexGrid && typeof this.hexGrid.applyRandomTints === 'function') {
+      // Set tint intensity - adjust this value to control how strong the tints are
+      const intensity = 0.4 + Math.random() * 0.3; // 0.4-0.7
+
+      this.hexGrid.applyRandomTints(
+        this.currentRoomCode,
+        this.socketManager,
+        intensity
+      );
+
+      // Show a message
+      if (this.ui && typeof this.ui.showToast === 'function') {
+        this.ui.showToast('Applying colorful tints...', 'success');
+      }
+    } else {
+      console.error('Tinting method not available');
+    }
+  }
+
+  /**
  * Toggle model animations on/off
  */
   toggleAnimations() {
@@ -598,7 +653,47 @@ class App {
       console.log(`Grid helper is now ${this.gridHelper.visible ? 'visible' : 'hidden'}`);
     }
   }
+
+  /**
+ * Generate terrain across the hex grid
+ */
+  generateTerrain() {
+    // Only generate terrain if we're in a room
+    if (!this.currentRoomCode || !this.socketManager) {
+      console.warn('Cannot generate terrain: not in a room');
+      if (this.ui && typeof this.ui.showToast === 'function') {
+        this.ui.showToast('Join a room first to generate terrain', 'error');
+      }
+      return;
+    }
+
+    // Check if the hex grid has the terrain generation method
+    if (this.hexGrid && typeof this.hexGrid.generateTerrain === 'function') {
+      // Use consistent amplitude values, not decreasing over time
+      // Can make this even higher if desired
+      const scale = 0.1 + Math.random() * 0.05;  // 0.1-0.15 
+      const amplitude = 4.0 + Math.random() * 2.0;  // 4.0-6.0 (increased from 2.5-3.5)
+      const octaves = 3 + Math.floor(Math.random() * 2);  // 3-4
+
+      this.hexGrid.generateTerrain(
+        scale,
+        amplitude,
+        octaves,
+        this.currentRoomCode,
+        this.socketManager
+      );
+
+      // Show a message
+      if (this.ui && typeof this.ui.showToast === 'function') {
+        this.ui.showToast('Generating terrain...', 'success');
+      }
+    } else {
+      console.error('Terrain generation method not available');
+    }
+  }
 }
+
+
 
 // Initialize the application when the DOM is ready
 document.addEventListener('DOMContentLoaded', () => {

@@ -38,3 +38,5 @@
 - **Fullscreen mode**: For the best experience on mobile devices, add the app to your home screen or use your browser's fullscreen mode
 
 - **Toggle animations**: Press 'A' to toggle model animations on/off
+
+- **Apply color tints**: Press Shift+T to apply random color tints to the terrain, T to regenerate
