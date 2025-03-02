@@ -81,6 +81,15 @@ class App {
       }
     }, { passive: false });
 
+    // Track keyboard state for modifiers
+    this.isShiftKeyPressed = false;
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Shift') this.isShiftKeyPressed = true;
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'Shift') this.isShiftKeyPressed = false;
+    });
+
     // Add keyboard shortcut for toggling axes helper (press 'X' key)
     window.addEventListener('keydown', (event) => {
       // Toggle axes helper with 'X' key
@@ -121,7 +130,7 @@ class App {
 
     // Implement custom camera controls
     this.implementCustomControls();
-
+    console.log('controls intialized');
     // Add lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     this.scene.add(ambientLight);
@@ -130,14 +139,13 @@ class App {
     directionalLight.position.set(10, 20, 10);
     this.scene.add(directionalLight);
 
-    // Add a simple grid for reference
-    const gridHelper = new THREE.GridHelper(30, 30, 0x555555, 0x333333);
-    this.scene.add(gridHelper);
-
     // Add axes helper for debugging (X = red, Y = green, Z = blue)
     this.axesHelper = new THREE.AxesHelper(10); // 10 is the size of the axes
+    this.gridHelper = new THREE.GridHelper(50, 50, 0x555555, 0x333333);
     this.scene.add(this.axesHelper);
     this.axesHelper.visible = false; // Hidden by default
+    this.scene.add(this.gridHelper);
+    this.gridHelper.visible = false; // Hidden by default
 
     // Set up mouse position tracking
     this.mouse = new THREE.Vector2();
@@ -204,6 +212,7 @@ class App {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
       }, 200); // Small delay to allow browser to complete orientation change
     });
+
   }
 
   /**
@@ -620,6 +629,24 @@ class App {
     if (selectedHex) {
       console.log('Hex clicked:', selectedHex);
 
+      // Check if Shift key is pressed for placing a voxel model instead of changing color
+      if (this.isShiftKeyPressed && typeof this.hexGrid.spawnVoxelModelOnHex === 'function') {
+        console.log('Placing voxel model (Shift key pressed)');
+
+        // Call spawnVoxelModelOnHex with some options
+        this.hexGrid.spawnVoxelModelOnHex(selectedHex.hexId, {
+          fallbackType: null, // random
+          scale: 0.5 + Math.random() * 0.5,
+          rotation: {
+            x: 0,
+            y: Math.random() * Math.PI * 2,
+            z: 0
+          }
+        });
+
+        return;
+      }
+
       // Only send color change on first click of a hex
       // We'll check if the hex already has a custom color by looking at the mesh
       const hexMesh = this.hexGrid.hexMeshes[selectedHex.hexId];
@@ -643,6 +670,55 @@ class App {
           action
         );
       }
+    }
+  }
+
+  /**
+   * Handle placing a voxel model on a hex
+   * @param {string} hexId - ID of the clicked hex
+   */
+  handleVoxelModelPlacement(hexId) {
+    // Only place models if we're in a room
+    if (!this.currentRoomCode) return;
+
+    // Check if the hex exists
+    const hexMesh = this.hexGrid.hexMeshes[hexId];
+    if (!hexMesh) return;
+
+    // Create a model selection - in a real implementation, you might 
+    // want to select models based on user choice or game logic
+    const modelOptions = {
+      // We'll use fallbacks here, but in a real implementation you'd use:
+      // modelPath: 'models/your-model.glb',
+      fallbackType: null, // random
+      heightOffset: 1.0,
+      scale: 0.5 + Math.random() * 0.5, // Random scale between 0.5 and 1.0
+      rotation: {
+        x: 0,
+        y: Math.random() * Math.PI * 2, // Random Y rotation
+        z: 0
+      }
+    };
+
+    // Place the model on the hex
+    this.hexGrid.spawnVoxelModelOnHex(hexId, modelOptions);
+
+    // You might want to also sync this with other clients via socket
+    if (this.socketManager) {
+      const action = {
+        voxelModel: {
+          // Send only what's needed for replication
+          type: modelOptions.fallbackType || 'random',
+          scale: modelOptions.scale,
+          rotation: modelOptions.rotation
+        }
+      };
+
+      this.socketManager.sendHexAction(
+        this.currentRoomCode,
+        hexId,
+        action
+      );
     }
   }
 
@@ -689,6 +765,8 @@ class App {
     if (this.axesHelper) {
       this.axesHelper.visible = !this.axesHelper.visible;
       console.log(`Axes helper is now ${this.axesHelper.visible ? 'visible' : 'hidden'}`);
+      this.gridHelper.visible = !this.gridHelper.visible;
+      console.log(`Grid helper is now ${this.gridHelper.visible ? 'visible' : 'hidden'}`);
     }
   }
 }

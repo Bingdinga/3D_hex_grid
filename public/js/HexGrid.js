@@ -13,6 +13,10 @@ class HexGrid {
     this.currentRoomCode = null; // We'll need to know the room code for updates
     this.socketManager = null; // Reference to socket manager for sending updates
 
+    // Initialize voxel model components
+    this.voxelModels = {}; // Maps hex IDs to their voxel model data
+    this.voxelModelManager = null; // Will be initialized if VoxelModelManager exists
+
     // Set smaller radius for mobile devices to improve performance
     if (this.detectMobile()) {
       this.radius = Math.min(radius, 8); // Reduce radius on mobile for performance
@@ -53,8 +57,16 @@ class HexGrid {
     // Initialize
     this.createGrid();
 
+    // Initialize voxel model manager if the class exists
+    this.initVoxelModelManager(scene);
+
     // Add scroll listener for height adjustment of selected hex
     window.addEventListener('wheel', this.handleScroll.bind(this));
+
+    console.log('HexGrid constructor completed, voxelModelManager initialized:',
+      this.voxelModelManager ? 'yes' : 'no',
+      'VoxelModelManager class exists:',
+      typeof VoxelModelManager !== 'undefined' ? 'yes' : 'no');
   }
 
   /**
@@ -71,6 +83,30 @@ class HexGrid {
    */
   setRoomCode(roomCode) {
     this.currentRoomCode = roomCode;
+  }
+
+  /**
+ * Initialize the voxel model manager
+ * @param {THREE.Scene} scene - The scene to add models to
+ */
+  initVoxelModelManager(scene) {
+    // Skip if we've already initialized
+    if (this.voxelModelManager) return;
+
+    // Check if VoxelModelManager exists
+    if (typeof VoxelModelManager === 'undefined') {
+      console.warn('VoxelModelManager class not available, skipping initialization');
+      return;
+    }
+
+    try {
+      // Create the manager
+      this.voxelModelManager = new VoxelModelManager(scene);
+      console.log('Voxel model manager initialized');
+    } catch (error) {
+      console.error('Error initializing voxel model manager:', error);
+      this.voxelModelManager = null;
+    }
   }
 
   /**
@@ -246,8 +282,8 @@ class HexGrid {
       hex.material = this.selectedMaterial.clone();
       this.selectedHex = hex;
 
-      // Spawn a sphere above the selected hex
-      this.spawnSphereAboveHex(hex.userData.hexId);
+      // // Spawn a sphere above the selected hex
+      // this.spawnSphereAboveHex(hex.userData.hexId);
 
       // Add this:
       this.createHexCenterMarker(hex.userData.hexId);
@@ -292,6 +328,20 @@ class HexGrid {
       hex.material = newMaterial;
     }
 
+    // Handle voxel model data if present
+    if (state.voxelModel) {
+      // Create model options from incoming data
+      const modelOptions = {
+        fallbackType: state.voxelModel.type,
+        heightOffset: 1.0, // Use a consistent height offset
+        scale: state.voxelModel.scale || 0.5,
+        rotation: state.voxelModel.rotation || { x: 0, y: 0, z: 0 }
+      };
+
+      // Create or update the model
+      this.spawnVoxelModelOnHex(hexId, modelOptions);
+    }
+
     // Then handle extrusion if height is specified
     if (state.height !== undefined) {
       // Store the new height in user data
@@ -299,6 +349,9 @@ class HexGrid {
 
       // Extrude the hex to create a 3D column
       this.extrudeHex(hex, state.height);
+
+      // Update any voxel model that might be on this hex
+      this.updateVoxelModel(hexId);
 
       // Update any sphere that might be on this hex
       this.updateSpherePosition(hexId);
@@ -423,6 +476,7 @@ class HexGrid {
 
     // Add to scene
     this.scene.add(sphere);
+    console.log('Sphere spawned above hex');
 
     // Store reference
     this.sphereObjects[hexId] = sphere;
@@ -447,10 +501,114 @@ class HexGrid {
     sphere.position.y = hex.userData.height + heightOffset;
   }
 
+  // Add these methods to the HexGrid class in HexGrid.js
+
+
+
   /**
- * Create a visual marker at the center of a hex for debugging
- * @param {string} hexId - ID of the hex
+   * Spawn a voxel model on a hex
+   * @param {string} hexId - ID of the hex to place the model on
+   * @param {Object} options - Options for the model
+   * @returns {THREE.Group} The model instance
+   */
+  /**
+ * Spawn a voxel model on a hex
+ * @param {string} hexId - ID of the hex to place the model on
+ * @param {Object} options - Options for the model
+ * @returns {THREE.Object3D} The model instance
  */
+  spawnVoxelModelOnHex(hexId, options = {}) {
+    // Skip if voxel model manager isn't initialized
+    if (!this.voxelModelManager) {
+      console.warn('Cannot spawn voxel model: voxel model manager not initialized');
+      return null;
+    }
+
+    const hex = this.hexMeshes[hexId];
+    if (!hex) {
+      console.warn(`Cannot spawn voxel model: hex ${hexId} not found`);
+      return null;
+    }
+
+    // Default options
+    const modelOptions = {
+      heightOffset: options.heightOffset || 1.0, // Height above the hex
+      scale: options.scale || 0.5
+    };
+
+    // Calculate position
+    const position = this.hexUtils.getObjectPosition(
+      hex.userData.q,
+      hex.userData.r,
+      hex.userData.height + modelOptions.heightOffset
+    );
+
+    // Store the height offset in user data for position updates
+    this.voxelModels[hexId] = {
+      heightOffset: modelOptions.heightOffset
+    };
+
+    // Create the model
+    return this.voxelModelManager.placeModelAt(hexId, position, modelOptions);
+  }
+
+  /**
+   * Update a voxel model's position when its hex changes height
+   * @param {string} hexId - ID of the hex
+   */
+  updateVoxelModelPosition(hexId) {
+    // Skip if we don't have this model
+    if (!this.voxelModels[hexId]) return;
+
+    const hex = this.hexMeshes[hexId];
+    if (!hex) return;
+
+    // Get the stored height offset
+    const heightOffset = this.voxelModels[hexId].heightOffset || 0.5;
+
+    // Calculate new position
+    const position = this.hexUtils.getObjectPosition(
+      hex.userData.q,
+      hex.userData.r,
+      hex.userData.height + heightOffset
+    );
+
+    // Update model position
+    if (this.voxelModelManager) {
+      this.voxelModelManager.updateModelPosition(hexId, position);
+    }
+  }
+
+  /**
+   * Remove a voxel model from a hex
+   * @param {string} hexId - ID of the hex
+   */
+  removeVoxelModel(hexId) {
+    if (this.voxelModelManager) {
+      this.voxelModelManager.removeModel(hexId);
+    }
+
+    if (this.voxelModels[hexId]) {
+      delete this.voxelModels[hexId];
+    }
+  }
+
+  /**
+   * Update voxel model when hex state changes
+   * This should be called from updateHexState
+   * @param {string} hexId - ID of the hex
+   */
+  updateVoxelModel(hexId) {
+    // Only update if we have a model on this hex
+    if (this.voxelModels[hexId]) {
+      this.updateVoxelModelPosition(hexId);
+    }
+  }
+
+  /**
+  * Create a visual marker at the center of a hex for debugging
+  * @param {string} hexId - ID of the hex
+  */
   createHexCenterMarker(hexId) {
     const hex = this.hexMeshes[hexId];
     if (!hex) return;
@@ -483,8 +641,8 @@ class HexGrid {
   }
 
   /**
- * Debug method to visualize coordinates and check transformations
- */
+  * Debug method to visualize coordinates and check transformations
+  */
   debugCoordinates() {
     // Create arrows showing the coordinate axes at origin
     const origin = new THREE.Vector3(0, 0, 0);
