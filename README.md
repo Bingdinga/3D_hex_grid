@@ -36,3 +36,4 @@
 - **Rotating the view**: Swipe with one finger to rotate the camera
 - **Zooming**: Pinch with two fingers to zoom in and out
 - **Fullscreen mode**: For the best experience on mobile devices, add the app to your home screen or use your browser's fullscreen mode
+

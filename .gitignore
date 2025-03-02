@@ -35,3 +35,9 @@ yarn-error.log*
 
 # Raspberry Pi specific
 *.img
+
+# Ignore 3D model files to save repository space
+public/models/*.glb
+public/models/*.gltf
+public/models/*.fbx
+public/models/*.obj

@@ -420,3 +420,5 @@ class UI {
     this.onSendChatMessage = callback;
   }
 }
+
+export { UI };

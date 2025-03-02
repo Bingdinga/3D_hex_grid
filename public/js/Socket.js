@@ -68,7 +68,7 @@ class SocketManager {
       
       // Game state events
       this.socket.on('hexUpdated', (data) => {
-        console.log(`Hex updated: ${data.hexId}`, data.action);
+        // console.log(`Hex updated: ${data.hexId}`, data.action);
         if (this.onHexUpdated) this.onHexUpdated(data.hexId, data.action);
       });
       
@@ -166,3 +166,5 @@ class SocketManager {
       this.onChatMessage = callback;
     }
   }
+
+  export { SocketManager };

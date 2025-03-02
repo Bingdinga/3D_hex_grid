@@ -1,3 +1,7 @@
+import * as THREE from 'three';
+import { HexUtils } from './HexUtils.js';
+import { VoxelModelManager } from './VoxelModelManager.js';
+
 /**
  * HexGrid class handles creating and managing a hexagonal grid in Three.js
  */
@@ -86,23 +90,23 @@ class HexGrid {
   }
 
   /**
- * Initialize the voxel model manager
- * @param {THREE.Scene} scene - The scene to add models to
- */
+   * Initialize the voxel model manager
+   * @param {THREE.Scene} scene - The scene to add models to
+   */
   initVoxelModelManager(scene) {
     // Skip if we've already initialized
     if (this.voxelModelManager) return;
 
     // Check if VoxelModelManager exists
     if (typeof VoxelModelManager === 'undefined') {
-      console.warn('VoxelModelManager class not available, skipping initialization');
+      console.error('VoxelModelManager class not available! Check script loading order.');
       return;
     }
 
     try {
       // Create the manager
       this.voxelModelManager = new VoxelModelManager(scene);
-      console.log('Voxel model manager initialized');
+      console.log('Voxel model manager initialized successfully:', this.voxelModelManager);
     } catch (error) {
       console.error('Error initializing voxel model manager:', error);
       this.voxelModelManager = null;
@@ -110,17 +114,16 @@ class HexGrid {
   }
 
   /**
-   * Handle scroll wheel events to adjust selected hex height
-   * @param {WheelEvent} event - Mouse wheel event
-   */
+ * Handle scroll wheel events to adjust selected hex height
+ * @param {WheelEvent} event - Mouse wheel event
+ * @returns {boolean} - Whether the event was handled by this method
+ */
   handleScroll(event) {
     // Only proceed if we have a selected hex
-    if (!this.selectedHex || !this.currentRoomCode || !this.socketManager) return;
+    if (!this.selectedHex || !this.currentRoomCode || !this.socketManager) return false;
 
     // Prevent default scrolling behavior when adjusting hex height
     if (event.target === document.querySelector('#canvas-container canvas')) {
-      event.preventDefault();
-
       // Get current height or default to 1
       const currentHeight = this.selectedHex.userData.height || 1;
 
@@ -146,10 +149,12 @@ class HexGrid {
           this.selectedHex.userData.hexId,
           action
         );
+
+        return true; // Event was handled
       }
-      return true; //event handled
     }
-    return false; //Not handled
+
+    return false; // Event was not handled
   }
 
   /**
@@ -518,6 +523,12 @@ class HexGrid {
  * @returns {THREE.Object3D} The model instance
  */
   spawnVoxelModelOnHex(hexId, options = {}) {
+
+    // Check if VoxelModelManager class exists at all
+    if (typeof VoxelModelManager === 'undefined') {
+      console.error('VoxelModelManager class is not defined!');
+      return null;
+    }
     // Skip if voxel model manager isn't initialized
     if (!this.voxelModelManager) {
       console.warn('Cannot spawn voxel model: voxel model manager not initialized');
@@ -535,6 +546,18 @@ class HexGrid {
       heightOffset: options.heightOffset || 1.0, // Height above the hex
       scale: options.scale || 0.5
     };
+
+    // If a model type was specified, convert it to a path
+    if (options.modelType) {
+      modelOptions.modelPath = `models/${options.modelType}.glb`;
+    } else if (options.modelPath) {
+      modelOptions.modelPath = options.modelPath;
+    }
+
+    // Add rotation if specified
+    if (options.rotation) {
+      modelOptions.rotation = options.rotation;
+    }
 
     // Calculate position
     const position = this.hexUtils.getObjectPosition(
@@ -684,3 +707,5 @@ class HexGrid {
     console.log('Debug coordinates visualization added');
   }
 }
+
+export { HexGrid };

@@ -8,28 +8,23 @@
   <title>3D Hex Grid Space</title>
   <link rel="stylesheet" href="styles.css">
   
-  <!-- Import Three.js from CDN with proper version -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.min.js"></script>
-  
-  <!-- Optional: Try to import OrbitControls as a module (but we have a fallback) -->
-  <script>
-    window.ThreeOrbitControls = undefined;
-  </script>
-  <script type="module">
-    import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.156.1/examples/jsm/controls/OrbitControls.js';
-    window.ThreeOrbitControls = OrbitControls;
-    console.log("OrbitControls module loaded successfully");
+  <!-- Import map for Three.js modules -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.156.1/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.156.1/examples/jsm/"
+    }
+  }
   </script>
   
-  <!-- Import Socket.io client from CDN -->
+  <!-- Socket.io client (keep as regular script, it's not a module) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
   <div id="game-container">
-    <!-- Three.js canvas will be inserted here -->
     <div id="canvas-container"></div>
     
-    <!-- UI Overlays -->
     <div id="ui-overlay">
       <!-- Room info panel -->
       <div id="room-panel">
@@ -61,12 +56,7 @@
     </div>
   </div>
 
-  <!-- Load our JavaScript files -->
-  <script src="js/VoxelModelManager.js"></script>
-  <script src="js/HexUtils.js"></script>
-  <script src="js/HexGrid.js"></script>
-  <script src="js/UI.js"></script>
-  <script src="js/Socket.js"></script>
-  <script src="js/main.js"></script>
+  <!-- Load our main JavaScript module - it will import the others -->
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>

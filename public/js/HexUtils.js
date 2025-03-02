@@ -133,3 +133,5 @@ class HexUtils {
     return { q, r };
   }
 }
+
+export { HexUtils };

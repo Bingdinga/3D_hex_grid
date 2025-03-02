@@ -1,3 +1,19 @@
+// Import statements
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// Import your own modules
+import { HexUtils } from './HexUtils.js';
+import { VoxelModelManager } from './VoxelModelManager.js';
+import { HexGrid } from './HexGrid.js';
+import { UI } from './UI.js';
+import { SocketManager } from './Socket.js';
+
+// Make THREE available globally for compatibility
+window.THREE = THREE;
+window.GLTFLoader = GLTFLoader;
+
 /**
  * Main entry point for the 3D Hex Grid application
  */
@@ -6,15 +22,6 @@ class App {
     console.log('App constructor started');
 
     try {
-      // Check if THREE is loaded
-      if (typeof THREE === 'undefined') {
-        console.error('THREE is not defined - Three.js might not be loaded correctly');
-        alert('Three.js library not loaded!');
-        return;
-      }
-
-      console.log('THREE is defined, initializing scene...');
-
       // Initialize Three.js
       this.initThree();
       console.log('Three.js initialized');
@@ -35,6 +42,7 @@ class App {
       console.log('Components connected');
 
       // Start render loop
+      this.animate = this.animate.bind(this); // Bind animate to preserve 'this' context
       this.animate();
       console.log('Animation loop started');
 
@@ -56,52 +64,6 @@ class App {
    */
   detectMobile() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  }
-
-  /**
-   * Prevent default touch behavior to avoid scrolling and zooming
-   */
-  preventDefaultTouchBehavior() {
-    // Prevent scrolling when touching the canvas
-    document.body.addEventListener('touchstart', function (e) {
-      if (e.target === document.querySelector('#canvas-container canvas')) {
-        e.preventDefault();
-      }
-    }, { passive: false });
-
-    document.body.addEventListener('touchmove', function (e) {
-      if (e.target === document.querySelector('#canvas-container canvas')) {
-        e.preventDefault();
-      }
-    }, { passive: false });
-
-    document.body.addEventListener('touchend', function (e) {
-      if (e.target === document.querySelector('#canvas-container canvas')) {
-        e.preventDefault();
-      }
-    }, { passive: false });
-
-    // Track keyboard state for modifiers
-    this.isShiftKeyPressed = false;
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Shift') this.isShiftKeyPressed = true;
-    });
-    window.addEventListener('keyup', (e) => {
-      if (e.key === 'Shift') this.isShiftKeyPressed = false;
-    });
-
-    // Add keyboard shortcut for toggling axes helper (press 'X' key)
-    window.addEventListener('keydown', (event) => {
-      // Toggle axes helper with 'X' key
-      if (event.key === 'x' || event.key === 'X') {
-        this.toggleAxesHelper();
-      }
-    });
-
-    // Disable context menu (right-click) for the application
-    document.getElementById('game-container').addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-    });
   }
 
   /**
@@ -128,9 +90,84 @@ class App {
     this.renderer.setPixelRatio(window.devicePixelRatio);
     document.getElementById('canvas-container').appendChild(this.renderer.domElement);
 
-    // Implement custom camera controls
-    this.implementCustomControls();
-    console.log('controls intialized');
+    // Initialize controls using imported OrbitControls
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.25;
+    this.controls.screenSpacePanning = false;
+    this.controls.maxPolarAngle = Math.PI / 2;
+
+    // Configure OrbitControls for our specific control scheme
+    this.controls.mouseButtons = {
+      LEFT: null,  // Disable left-click for OrbitControls
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.ROTATE  // Right-click to rotate/pan
+    };
+
+    // Add touch gesture recognition for OrbitControls
+    this.controls.touches = {
+      ONE: THREE.TOUCH.ROTATE,  // One finger rotates
+      TWO: THREE.TOUCH.DOLLY_PAN  // Two fingers for zoom/pan
+    };
+
+    // Add custom properties to track dragging
+    this.controls.wasDragging = false;
+    this.controls.isMouseDown = false;
+    this.controls.isMouseMoving = false;
+    this.controls.lastMoveTime = Date.now();
+    this.controls.isRightMouseDown = false;
+    this.controls.isTouching = false;
+
+    // Override the update method to add our custom tracking
+    const originalUpdate = this.controls.update.bind(this.controls);
+    this.controls.update = () => {
+      originalUpdate();
+
+      // Reset dragging state on each frame if not actively moving
+      if (!this.controls.isMouseMoving && Date.now() - this.controls.lastMoveTime > 300) {
+        this.controls.wasDragging = false;
+      }
+    };
+
+    // Add event listeners to track mouse movement for drag detection
+    this.renderer.domElement.addEventListener('mousedown', () => {
+      this.controls.isMouseDown = true;
+      this.controls.lastMoveTime = Date.now();
+    });
+
+    this.renderer.domElement.addEventListener('mousemove', () => {
+      if (this.controls.isMouseDown) {
+        this.controls.isMouseMoving = true;
+        this.controls.wasDragging = true;
+        this.controls.lastMoveTime = Date.now();
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      this.controls.isMouseDown = false;
+      this.controls.isMouseMoving = false;
+    });
+
+    // Add this to the initThree method, near where the other event listeners are defined
+    // Mouse wheel for zoom
+    this.renderer.domElement.addEventListener('wheel', (event) => {
+      // Only proceed if controls are enabled
+      if (!this.controls.enabled) return;
+
+      // Check if the hex grid should handle this scroll for hex height adjustment
+      const hexHandled = this.hexGrid && this.hexGrid.handleScroll ?
+        this.hexGrid.handleScroll(event) : false;
+
+      // If hex grid didn't handle it, use it for camera zoom
+      if (!hexHandled) {
+        // Let OrbitControls handle the zooming naturally
+        // No need to prevent default as OrbitControls will do that if it handles the event
+      } else {
+        // If hex grid handled it, prevent browser default scrolling
+        event.preventDefault();
+      }
+    }, { passive: false });
+
     // Add lighting
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     this.scene.add(ambientLight);
@@ -163,6 +200,9 @@ class App {
       }
     });
 
+    // Use bind to preserve 'this' context
+    const handleHexClick = this.handleHexClick.bind(this);
+
     // Set up click handling specifically for left-click on desktop
     window.addEventListener('click', (event) => {
       // Only proceed if it's a left-click (button 0)
@@ -173,7 +213,7 @@ class App {
 
       // Only process if we're not in a drag operation
       if (!this.controls.wasDragging) {
-        this.handleHexClick();
+        handleHexClick();
       }
     });
 
@@ -190,9 +230,8 @@ class App {
         this.mouse.y = -(touch.clientY / window.innerHeight) * 2 + 1;
 
         // Check if this was a tap, not a drag 
-        // The threshold is checked in touchmove and stored in wasDragging
         if (!this.controls.wasDragging) {
-          this.handleHexClick();
+          handleHexClick();
         }
       }
     });
@@ -212,320 +251,14 @@ class App {
         this.renderer.setSize(window.innerWidth, window.innerHeight);
       }, 200); // Small delay to allow browser to complete orientation change
     });
-
   }
 
   /**
    * Implement custom orbital controls
    */
   implementCustomControls() {
-    // Try to use ThreeOrbitControls if available from module import
-    if (window.ThreeOrbitControls) {
-      console.log('Using imported OrbitControls');
-      this.controls = new window.ThreeOrbitControls(this.camera, this.renderer.domElement);
-      this.controls.enableDamping = true;
-      this.controls.dampingFactor = 0.25;
-      this.controls.screenSpacePanning = false;
-      this.controls.maxPolarAngle = Math.PI / 2;
-
-      // Configure OrbitControls for our specific control scheme
-      this.controls.mouseButtons = {
-        LEFT: null,  // Disable left-click for OrbitControls
-        MIDDLE: THREE.MOUSE.DOLLY,
-        RIGHT: THREE.MOUSE.ROTATE  // Right-click to rotate/pan
-      };
-
-      // Add touch gesture recognition for OrbitControls
-      this.controls.touches = {
-        ONE: THREE.TOUCH.ROTATE,  // One finger rotates
-        TWO: THREE.TOUCH.DOLLY_PAN  // Two fingers for zoom/pan
-      };
-
-      // Add custom properties to track dragging
-      this.controls.wasDragging = false;
-
-      // Override the update method to add our custom tracking
-      const originalUpdate = this.controls.update.bind(this.controls);
-      this.controls.update = () => {
-        originalUpdate();
-
-        // Reset dragging state on each frame if not actively moving
-        if (!this.controls.isMouseMoving && Date.now() - this.controls.lastMoveTime > 300) {
-          this.controls.wasDragging = false;
-        }
-      };
-
-      // Add event listeners to track mouse movement for drag detection
-      this.renderer.domElement.addEventListener('mousedown', () => {
-        this.controls.isMouseDown = true;
-        this.controls.lastMoveTime = Date.now();
-      });
-
-      this.renderer.domElement.addEventListener('mousemove', () => {
-        if (this.controls.isMouseDown) {
-          this.controls.isMouseMoving = true;
-          this.controls.wasDragging = true;
-          this.controls.lastMoveTime = Date.now();
-        }
-      });
-
-      window.addEventListener('mouseup', () => {
-        this.controls.isMouseDown = false;
-        this.controls.isMouseMoving = false;
-      });
-
-      return;
-    }
-
-    console.log('Using custom orbital controls');
-
-    // Simple camera controls
-    this.controls = {
-      update: function () {
-        // Reset dragging state on each frame if not actively moving
-        if (!this.isMouseMoving && !this.isTouching && Date.now() - this.lastMoveTime > 300) {
-          this.wasDragging = false;
-        }
-      },
-      enabled: true,
-      isMouseDown: false,
-      isRightMouseDown: false,
-      isMouseMoving: false,
-      isTouching: false,
-      wasDragging: false,
-      dragThreshold: 5,  // Lower threshold for better distinction between tap and drag
-      lastMoveTime: 0,
-      lastMousePosition: { x: 0, y: 0 },
-      lastTouchPosition: { x: 0, y: 0 },
-      touchStartPosition: { x: 0, y: 0 },
-      pinchStartDistance: 0,
-      cameraDistance: 25,  // Initial camera distance
-      cameraTheta: Math.PI / 4,  // Horizontal angle
-      cameraPhi: Math.PI / 3,    // Vertical angle
-
-      // Update camera position using spherical coordinates
-      updateCameraPosition: (camera) => {
-        if (!this.controls.enabled) return;
-
-        const x = this.controls.cameraDistance * Math.sin(this.controls.cameraPhi) * Math.cos(this.controls.cameraTheta);
-        const y = this.controls.cameraDistance * Math.cos(this.controls.cameraPhi);
-        const z = this.controls.cameraDistance * Math.sin(this.controls.cameraPhi) * Math.sin(this.controls.cameraTheta);
-
-        camera.position.set(x, y, z);
-        camera.lookAt(0, 0, 0);
-      }
-    };
-
-    // Initial camera position update
-    this.controls.updateCameraPosition(this.camera);
-
-    // Mouse down event - specifically track right mouse button for panning
-    this.renderer.domElement.addEventListener('mousedown', (event) => {
-      // Button 2 is right mouse button
-      if (event.button === 2) {
-        this.controls.isRightMouseDown = true;
-        this.controls.lastMousePosition = {
-          x: event.clientX,
-          y: event.clientY
-        };
-        event.preventDefault();
-      } else if (event.button === 0) {
-        // Left button - just track for drag detection, don't actually do anything
-        this.controls.isMouseDown = true;
-        this.controls.wasDragging = false;
-        this.controls.lastMousePosition = {
-          x: event.clientX,
-          y: event.clientY
-        };
-      }
-    });
-
-    // Mouse up event
-    window.addEventListener('mouseup', (event) => {
-      if (event.button === 2) {
-        this.controls.isRightMouseDown = false;
-      } else if (event.button === 0) {
-        this.controls.isMouseDown = false;
-      }
-
-      this.controls.isMouseMoving = false;
-    });
-
-    // Mouse move event for rotation (but only on right-click)
-    window.addEventListener('mousemove', (event) => {
-      // Track if we're moving the mouse while button is down (for drag detection)
-      if (this.controls.isMouseDown) {
-        const deltaX = Math.abs(event.clientX - this.controls.lastMousePosition.x);
-        const deltaY = Math.abs(event.clientY - this.controls.lastMousePosition.y);
-
-        // If there's significant movement, consider it a drag
-        if (deltaX > this.controls.dragThreshold || deltaY > this.controls.dragThreshold) {
-          this.controls.wasDragging = true;
-          this.controls.isMouseMoving = true;
-          this.controls.lastMoveTime = Date.now();
-        }
-      }
-
-      // Only respond to movement if right mouse button is down (for camera control)
-      if (this.controls.isRightMouseDown && this.controls.enabled) {
-        // Calculate deltas
-        const deltaX = event.clientX - this.controls.lastMousePosition.x;
-        const deltaY = event.clientY - this.controls.lastMousePosition.y;
-
-        // Update angles
-        this.controls.cameraTheta += deltaX * 0.01;
-
-        // Clamp vertical rotation to avoid gimbal lock
-        this.controls.cameraPhi = Math.max(0.1, Math.min(Math.PI - 0.1, this.controls.cameraPhi - deltaY * 0.01));
-
-        // Update camera position
-        this.controls.updateCameraPosition(this.camera);
-
-        // Save current position
-        this.controls.lastMousePosition = {
-          x: event.clientX,
-          y: event.clientY
-        };
-
-        this.controls.isMouseMoving = true;
-        this.controls.lastMoveTime = Date.now();
-      }
-    });
-
-    // Touch start event for mobile
-    this.renderer.domElement.addEventListener('touchstart', (event) => {
-      event.preventDefault();
-
-      if (event.touches.length === 1) {
-        // Single touch - for rotation
-        this.controls.isTouching = true;
-        this.controls.wasDragging = false; // Reset drag flag on new touch
-        const touch = event.touches[0];
-        this.controls.lastTouchPosition = {
-          x: touch.clientX,
-          y: touch.clientY
-        };
-        this.controls.touchStartPosition = {
-          x: touch.clientX,
-          y: touch.clientY
-        };
-        this.controls.lastMoveTime = Date.now();
-      }
-      else if (event.touches.length === 2) {
-        // Two touches - for pinch zoom
-        this.controls.isTouching = true;
-        this.controls.wasDragging = true; // Always consider multi-touch as a drag
-        const touch1 = event.touches[0];
-        const touch2 = event.touches[1];
-
-        // Calculate the distance between the two touches
-        const dx = touch1.clientX - touch2.clientX;
-        const dy = touch1.clientY - touch2.clientY;
-        this.controls.pinchStartDistance = Math.sqrt(dx * dx + dy * dy);
-        this.controls.lastMoveTime = Date.now();
-      }
-    }, { passive: false });
-
-    // Touch move event for mobile
-    this.renderer.domElement.addEventListener('touchmove', (event) => {
-      event.preventDefault();
-
-      if (this.controls.isTouching && this.controls.enabled) {
-        if (event.touches.length === 1) {
-          // Single touch movement - rotation
-          const touch = event.touches[0];
-
-          // Calculate touch movement
-          const deltaX = touch.clientX - this.controls.lastTouchPosition.x;
-          const deltaY = touch.clientY - this.controls.lastTouchPosition.y;
-
-          // Check if we've moved beyond the drag threshold
-          const totalDeltaX = touch.clientX - this.controls.touchStartPosition.x;
-          const totalDeltaY = touch.clientY - this.controls.touchStartPosition.y;
-          const totalDelta = Math.sqrt(totalDeltaX * totalDeltaX + totalDeltaY * totalDeltaY);
-
-          if (totalDelta > this.controls.dragThreshold) {
-            this.controls.wasDragging = true;
-          }
-
-          // Update camera angles
-          this.controls.cameraTheta += deltaX * 0.01;
-          this.controls.cameraPhi = Math.max(0.1, Math.min(Math.PI - 0.1, this.controls.cameraPhi - deltaY * 0.01));
-
-          // Update camera position
-          this.controls.updateCameraPosition(this.camera);
-
-          // Save current position
-          this.controls.lastTouchPosition = {
-            x: touch.clientX,
-            y: touch.clientY
-          };
-
-          this.controls.lastMoveTime = Date.now();
-        }
-        else if (event.touches.length === 2) {
-          // Two-finger pinch-zoom
-          const touch1 = event.touches[0];
-          const touch2 = event.touches[1];
-
-          // Calculate current distance between touches
-          const dx = touch1.clientX - touch2.clientX;
-          const dy = touch1.clientY - touch2.clientY;
-          const currentDistance = Math.sqrt(dx * dx + dy * dy);
-
-          // Calculate zoom factor
-          const zoomFactor = currentDistance / this.controls.pinchStartDistance;
-
-          // Update camera distance (zoom)
-          this.controls.cameraDistance = Math.max(5, Math.min(50, this.controls.cameraDistance / zoomFactor));
-
-          // Save the new distance
-          this.controls.pinchStartDistance = currentDistance;
-
-          // Update camera position
-          this.controls.updateCameraPosition(this.camera);
-
-          // Mark as dragging to prevent click after pinch
-          this.controls.wasDragging = true;
-          this.controls.lastMoveTime = Date.now();
-        }
-      }
-    }, { passive: false });
-
-    // Touch end event for mobile
-    this.renderer.domElement.addEventListener('touchend', (event) => {
-      event.preventDefault();
-      this.controls.isTouching = false;
-
-      // We'll maintain the wasDragging flag briefly to prevent accidental taps
-      // It will be reset by the update method after a short delay
-    }, { passive: false });
-
-    // Mouse wheel for zoom
-    this.renderer.domElement.addEventListener('wheel', (event) => {
-      // First let the hex grid try to handle the event
-      const hexHandled = this.hexGrid.handleScroll(event);
-
-      // If hex grid didn't handle it and controls are enabled, use it for zoom
-      if (!hexHandled && this.controls.enabled) {
-        const zoomSpeed = 0.1;
-        const direction = event.deltaY > 0 ? 1 : -1;
-
-        // Update camera distance
-        this.controls.cameraDistance = Math.max(5, Math.min(50, this.controls.cameraDistance * (1 + direction * zoomSpeed)));
-
-        // Update camera position
-        this.controls.updateCameraPosition(this.camera);
-
-        // Prevent default scrolling behavior
-        event.preventDefault();
-      }
-    }, { passive: false });
-
-    // Disable context menu to allow right-click dragging
-    this.renderer.domElement.addEventListener('contextmenu', (event) => {
-      event.preventDefault();
-    });
+    // This method is now redundant as we're using OrbitControls directly in initThree
+    console.log('Using imported OrbitControls');
   }
 
   /**
@@ -603,17 +336,51 @@ class App {
     this.socketManager.setHexUpdatedCallback((hexId, action) => {
       this.hexGrid.updateHexState(hexId, action);
     });
+  }
 
-    this.socketManager.setRoomErrorCallback((error) => {
-      this.ui.displayError(error);
+  /**
+   * Prevent default touch behavior to avoid scrolling and zooming
+   */
+  preventDefaultTouchBehavior() {
+    // Prevent scrolling when touching the canvas
+    document.body.addEventListener('touchstart', function (e) {
+      if (e.target === document.querySelector('#canvas-container canvas')) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    document.body.addEventListener('touchmove', function (e) {
+      if (e.target === document.querySelector('#canvas-container canvas')) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    document.body.addEventListener('touchend', function (e) {
+      if (e.target === document.querySelector('#canvas-container canvas')) {
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    // Track keyboard state for modifiers
+    this.isShiftKeyPressed = false;
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Shift') this.isShiftKeyPressed = true;
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'Shift') this.isShiftKeyPressed = false;
     });
 
-    this.socketManager.setChatMessageCallback((userId, message, timestamp) => {
-      this.ui.displayChatMessage(userId, message, timestamp);
+    // Add keyboard shortcut for toggling axes helper (press 'X' key)
+    window.addEventListener('keydown', (event) => {
+      // Toggle axes helper with 'X' key
+      if (event.key === 'x' || event.key === 'X') {
+        this.toggleAxesHelper();
+      }
     });
 
-    this.socketManager.setHexUpdatedCallback((hexId, action) => {
-      this.hexGrid.updateHexState(hexId, action);
+    // Disable context menu (right-click) for the application
+    document.getElementById('game-container').addEventListener('contextmenu', (e) => {
+      e.preventDefault();
     });
   }
 
@@ -630,20 +397,9 @@ class App {
       console.log('Hex clicked:', selectedHex);
 
       // Check if Shift key is pressed for placing a voxel model instead of changing color
-      if (this.isShiftKeyPressed && typeof this.hexGrid.spawnVoxelModelOnHex === 'function') {
+      if (this.isShiftKeyPressed) {
         console.log('Placing voxel model (Shift key pressed)');
-
-        // Call spawnVoxelModelOnHex with some options
-        this.hexGrid.spawnVoxelModelOnHex(selectedHex.hexId, {
-          fallbackType: null, // random
-          scale: 0.5 + Math.random() * 0.5,
-          rotation: {
-            x: 0,
-            y: Math.random() * Math.PI * 2,
-            z: 0
-          }
-        });
-
+        this.handleVoxelModelPlacement(selectedHex.hexId);
         return;
       }
 
@@ -685,12 +441,15 @@ class App {
     const hexMesh = this.hexGrid.hexMeshes[hexId];
     if (!hexMesh) return;
 
-    // Create a model selection - in a real implementation, you might 
-    // want to select models based on user choice or game logic
+    // Get available model types
+    const modelTypes = ['doom_voxel_marines', 'hot_air_ballon_voxel', 'voxel_isabelle', 'voxel_lucky_cat', 'voxel_world'];
+
+    // Select a random model type
+    const randomModelType = modelTypes[Math.floor(Math.random() * modelTypes.length)];
+
+    // Create a model selection
     const modelOptions = {
-      // We'll use fallbacks here, but in a real implementation you'd use:
-      // modelPath: 'models/your-model.glb',
-      fallbackType: null, // random
+      modelType: randomModelType, // This will be converted to a full path in HexGrid.js
       heightOffset: 1.0,
       scale: 0.5 + Math.random() * 0.5, // Random scale between 0.5 and 1.0
       rotation: {
@@ -703,12 +462,11 @@ class App {
     // Place the model on the hex
     this.hexGrid.spawnVoxelModelOnHex(hexId, modelOptions);
 
-    // You might want to also sync this with other clients via socket
+    // Sync with other clients via socket
     if (this.socketManager) {
       const action = {
         voxelModel: {
-          // Send only what's needed for replication
-          type: modelOptions.fallbackType || 'random',
+          type: modelOptions.modelType,
           scale: modelOptions.scale,
           rotation: modelOptions.rotation
         }
@@ -739,7 +497,7 @@ class App {
    * Animation loop
    */
   animate() {
-    requestAnimationFrame(this.animate.bind(this));
+    requestAnimationFrame(this.animate);
 
     // Update controls
     if (this.controls && typeof this.controls.update === 'function') {
@@ -759,8 +517,8 @@ class App {
   }
 
   /**
- * Toggle the visibility of the coordinate axes
- */
+   * Toggle the visibility of the coordinate axes
+   */
   toggleAxesHelper() {
     if (this.axesHelper) {
       this.axesHelper.visible = !this.axesHelper.visible;
