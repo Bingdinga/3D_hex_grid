@@ -319,11 +319,11 @@ class HexGrid {
   }
 
   /**
-   * Handle mouse click or touch tap for hex selection
-   * @param {THREE.Vector2} pointerPosition - Normalized mouse/touch position
-   * @param {THREE.Camera} camera - Current camera
-   * @returns {Object|null} Selected hex data or null if no hex was clicked
-   */
+ * Handle mouse click or touch tap for hex selection
+ * @param {THREE.Vector2} pointerPosition - Normalized mouse/touch position
+ * @param {THREE.Camera} camera - Current camera
+ * @returns {Object|null} Selected hex data or null if no hex was clicked
+ */
   handleClick(pointerPosition, camera) {
     this.raycaster.setFromCamera(pointerPosition, camera);
 
@@ -382,13 +382,15 @@ class HexGrid {
       }
       this.selectedHex = hex;
 
-      // Create hex center marker
+      // Add this for debugging marker
       this.createHexCenterMarker(hex.userData.hexId);
 
+      // Return the hex data with preserved height
       return {
         hexId: hex.userData.hexId,
         q: hex.userData.q,
-        r: hex.userData.r
+        r: hex.userData.r,
+        height: hex.userData.height || 0.01 // Preserve height information
       };
     } else {
       // If we clicked elsewhere, clear selection

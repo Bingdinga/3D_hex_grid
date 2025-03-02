@@ -441,10 +441,13 @@ class App {
 
       // Only set color if it doesn't already have a custom color
       if (!hasCustomColor) {
+        // Get current height - maintain it instead of resetting to 1.0
+        const currentHeight = hexMesh.userData.height || 1.0;
+
         // Generate a random color
         const action = {
           color: this.getRandomColor(),
-          height: 1.0 // Default starting height
+          height: currentHeight // Maintain the current height
         };
 
         // Send action to server
@@ -454,6 +457,13 @@ class App {
           action
         );
       }
+
+      // Play animation on the model if there is one on this hex
+      // Add this code to trigger animation
+      if (this.hexGrid && typeof this.hexGrid.playAnimationOnHex === 'function') {
+        this.hexGrid.playAnimationOnHex(selectedHex.hexId);
+      }
+      
     }
   }
 
