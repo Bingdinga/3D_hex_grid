@@ -15,6 +15,9 @@ class VoxelModelManager {
 
     // Create a simple fallback geometry
     this.fallbackGeometry = new THREE.BoxGeometry(1, 1, 1);
+
+    this.animatedModels = {}; // Track models that should be animated
+    this.clock = new THREE.Clock(); // For timing animations
   }
 
   /**
@@ -70,6 +73,20 @@ class VoxelModelManager {
       if (options.modelPath) {
         // Try to load the specified model
         model = await this.loadModel(options.modelPath);
+
+        // First, normalize the model size by getting its bounding box
+        const bbox = new THREE.Box3().setFromObject(model);
+        const size = bbox.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+
+        // Normalize to a base size of 1 unit, then apply the requested scale
+        const normalizedScale = 1 / maxDim;
+        const scale = options.scale || 0.5;
+        model.scale.set(
+          normalizedScale * scale,
+          normalizedScale * scale,
+          normalizedScale * scale
+        );
       } else {
         // Use fallback if no model path is specified
         console.log('Using fallback model (no model path specified)');
@@ -77,6 +94,10 @@ class VoxelModelManager {
           color: Math.random() * 0xffffff
         });
         model = new THREE.Mesh(this.fallbackGeometry, material);
+
+        // Apply scale directly for fallback cube
+        const scale = options.scale || 0.5;
+        model.scale.set(scale, scale, scale);
       }
 
       // Apply position
@@ -93,6 +114,17 @@ class VoxelModelManager {
         model.rotation.z = options.rotation.z || 0;
       }
 
+      // Store animation parameters if animation is enabled
+      if (options.animate) {
+        this.animatedModels[hexId] = {
+          model: model,
+          initialY: position.y,
+          hoverRange: options.hoverRange || 0.2,
+          hoverSpeed: options.hoverSpeed || 1.0,
+          rotateSpeed: options.rotateSpeed || 0.5
+        };
+      }
+
       // Add to scene
       this.scene.add(model);
 
@@ -103,8 +135,23 @@ class VoxelModelManager {
     } catch (error) {
       console.error('Error placing model:', error);
 
-    //   // Use fallback on error
-    //   return this.placeFallbackModel(hexId, position, options);
+      //   // Use fallback on error
+      //   return this.placeFallbackModel(hexId, position, options);
+    }
+  }
+
+  // In VoxelModelManager.js - Add this new method
+  updateModelHeight(hexId, position, hexHeight) {
+    const model = this.models[hexId];
+    if (!model) return;
+
+    // Update the position
+    model.position.copy(position);
+
+    // Update animation data if this model is animated
+    if (this.animatedModels[hexId]) {
+      this.animatedModels[hexId].initialY = position.y;
+      this.animatedModels[hexId].hexHeight = hexHeight;
     }
   }
 
@@ -154,6 +201,31 @@ class VoxelModelManager {
     if (model) {
       model.position.copy(position);
     }
+  }
+
+  // In VoxelModelManager.js - Update the updateAnimations method
+  updateAnimations() {
+    const deltaTime = this.clock.getDelta();
+    const time = this.clock.getElapsedTime();
+
+    // Update each animated model
+    Object.keys(this.animatedModels).forEach(hexId => {
+      const animData = this.animatedModels[hexId];
+      const model = animData.model;
+
+      if (model) {
+        // Bobbing up and down animation
+        if (animData.hoverRange > 0) {
+          model.position.y = animData.initialY +
+            Math.sin(time * animData.hoverSpeed) * animData.hoverRange;
+        }
+
+        // Rotation animation around Y axis
+        if (animData.rotateSpeed > 0) {
+          model.rotation.y += deltaTime * animData.rotateSpeed;
+        }
+      }
+    });
   }
 
   /**

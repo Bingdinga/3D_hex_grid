@@ -457,16 +457,20 @@ class App {
     // Select a random model type
     const randomModelType = modelTypes[Math.floor(Math.random() * modelTypes.length)];
 
-    // Create a model selection
+    // Create a model selection with animation parameters
     const modelOptions = {
-      modelType: randomModelType, // This will be converted to a full path in HexGrid.js
+      modelType: randomModelType,
       heightOffset: 1.0,
       scale: 0.5 + Math.random() * 0.5, // Random scale between 0.5 and 1.0
       rotation: {
         x: 0,
         y: Math.random() * Math.PI * 2, // Random Y rotation
         z: 0
-      }
+      },
+      animate: true,
+      hoverRange: 0.1 + Math.random() * 0.15, // Random hover range
+      hoverSpeed: 0.8 + Math.random() * 1.0, // Random hover speed
+      rotateSpeed: 0.2 + Math.random() * 0.6 // Random rotation speed
     };
 
     // Place the model on the hex
@@ -478,7 +482,11 @@ class App {
         voxelModel: {
           type: modelOptions.modelType,
           scale: modelOptions.scale,
-          rotation: modelOptions.rotation
+          rotation: modelOptions.rotation,
+          animate: modelOptions.animate,
+          hoverRange: modelOptions.hoverRange,
+          hoverSpeed: modelOptions.hoverSpeed,
+          rotateSpeed: modelOptions.rotateSpeed
         }
       };
 
@@ -512,6 +520,12 @@ class App {
     // Update controls
     if (this.controls && typeof this.controls.update === 'function') {
       this.controls.update();
+    }
+
+    // Update model animations if available
+    if (this.hexGrid && this.hexGrid.voxelModelManager &&
+      typeof this.hexGrid.voxelModelManager.updateAnimations === 'function') {
+      this.hexGrid.voxelModelManager.updateAnimations();
     }
 
     // Check if we're currently dragging to avoid hover effects

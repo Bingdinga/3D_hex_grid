@@ -334,16 +334,30 @@ class HexGrid {
 
     // Handle voxel model data if present
     if (state.voxelModel) {
+
       // Create model options from incoming data
       const modelOptions = {
         fallbackType: state.voxelModel.type,
         heightOffset: 1.0, // Use a consistent height offset
         scale: state.voxelModel.scale || 0.5,
-        rotation: state.voxelModel.rotation || { x: 0, y: 0, z: 0 }
+        rotation: state.voxelModel.rotation || { x: 0, y: 0, z: 0 },
+        animate: state.voxelModel.animate !== undefined ? state.voxelModel.animate : true,
+        hoverRange: state.voxelModel.hoverRange || 0.2,
+        hoverSpeed: state.voxelModel.hoverSpeed || 1.0,
+        rotateSpeed: state.voxelModel.rotateSpeed || 0.5,
+        hexHeight: hex.userData.height || 0 // Pass current hex height
       };
 
+
+      // Remove any existing model first
+      if (this.voxelModelManager) {
+        this.voxelModelManager.removeModel(hexId);
+      }
+
       // Create or update the model
-      this.spawnVoxelModelOnHex(hexId, modelOptions);
+      if (modelOptions.modelType) {
+        this.spawnVoxelModelOnHex(hexId, modelOptions);
+      }
     }
 
     // Then handle extrusion if height is specified
@@ -422,6 +436,11 @@ class HexGrid {
 
     if (wasHover) {
       this.hoverHex = newMesh;
+    }
+
+    // Ensure models update with the new hex height
+    if (this.voxelModels[hexId]) {
+      this.updateVoxelModelPosition(hexId);
     }
   }
 
@@ -543,14 +562,24 @@ class HexGrid {
     // Default options
     const modelOptions = {
       heightOffset: options.heightOffset || 1.0, // Height above the hex
-      scale: options.scale || 0.5
+      scale: options.scale || 0.5,
+      animate: options.animate !== undefined ? options.animate : true, // Enable animation by default
+      hoverRange: options.hoverRange || 0.2, // Range of up/down hover
+      hoverSpeed: options.hoverSpeed || 1.0, // Speed of hover animation
+      rotateSpeed: options.rotateSpeed || 0.5, // Rotation speed (radians per second)
+      hexHeight: hex.userData.height || 0 // Pass the current hex height
     };
 
     // If a model type was specified, convert it to a path
     if (options.modelType) {
       modelOptions.modelPath = `models/${options.modelType}.glb`;
+      console.log(`Setting model path to: ${modelOptions.modelPath}`);
     } else if (options.modelPath) {
       modelOptions.modelPath = options.modelPath;
+      console.log(`Using provided model path: ${modelOptions.modelPath}`);
+    } else {
+      console.warn('No model type or path specified for voxel model');
+      return null; // Don't proceed without a model path
     }
 
     // Add rotation if specified
@@ -567,7 +596,11 @@ class HexGrid {
 
     // Store the height offset in user data for position updates
     this.voxelModels[hexId] = {
-      heightOffset: modelOptions.heightOffset
+      heightOffset: modelOptions.heightOffset,
+      animate: modelOptions.animate,
+      hoverRange: modelOptions.hoverRange,
+      hoverSpeed: modelOptions.hoverSpeed,
+      rotateSpeed: modelOptions.rotateSpeed
     };
 
     // Create the model
@@ -597,7 +630,7 @@ class HexGrid {
 
     // Update model position
     if (this.voxelModelManager) {
-      this.voxelModelManager.updateModelPosition(hexId, position);
+      this.voxelModelManager.updateModelHeight(hexId, position, hex.userData.height);
     }
   }
 
