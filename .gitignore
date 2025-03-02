@@ -41,3 +41,10 @@ public/models/*.glb
 public/models/*.gltf
 public/models/*.fbx
 public/models/*.obj
+
+# Texture files
+public/textures/*.png
+public/textures/*.jpg
+public/textures/*.jpeg
+public/textures/*.gif
+public/textures/*.webp

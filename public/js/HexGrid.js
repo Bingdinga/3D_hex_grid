@@ -55,6 +55,30 @@ class HexGrid {
       side: THREE.DoubleSide
     });
 
+    // In the constructor of HexGrid class, after creating materials
+    this.textureLoader = new THREE.TextureLoader();
+    this.cobbleTexture = this.textureLoader.load('textures/cobble.png');
+    this.cobbleTexture.wrapS = THREE.RepeatWrapping;
+    this.cobbleTexture.wrapT = THREE.RepeatWrapping;
+
+    // Create textured material for the sides of the hex columns
+    this.cobbleMaterial = new THREE.MeshStandardMaterial({
+      map: this.cobbleTexture,
+      side: THREE.DoubleSide
+    });
+
+    // Material for the top of the hex columns
+    this.cobbleTopMaterial = new THREE.MeshStandardMaterial({
+      map: this.cobbleTexture,
+      side: THREE.DoubleSide
+    });
+
+    // Material for the top of the hex columns
+    this.cobbleTopMaterial = new THREE.MeshStandardMaterial({
+      map: this.cobbleTexture,
+      side: THREE.DoubleSide
+    });
+
     // Create raycaster for hex selection
     this.raycaster = new THREE.Raycaster();
 
@@ -196,8 +220,9 @@ class HexGrid {
       // Rotate to lie flat on xz plane
       geometry.rotateX(-Math.PI / 2);
 
-      // Create mesh
-      const mesh = new THREE.Mesh(geometry, this.defaultMaterial.clone());
+      // Create mesh with textured material
+      const material = this.cobbleTopMaterial.clone();
+      const mesh = new THREE.Mesh(geometry, material);
 
       // Position slightly above the ground plane to avoid z-fighting
       mesh.position.y = 0.01;
@@ -222,7 +247,13 @@ class HexGrid {
     if (this.detectMobile() || isDragging) {
       // Clear any existing hover state
       if (this.hoverHex && this.hoverHex !== this.selectedHex) {
-        this.hoverHex.material = this.defaultMaterial.clone();
+        if (Array.isArray(this.hoverHex.material)) {
+          // For multi-material meshes, restore texture to top face
+          this.hoverHex.material[0] = this.cobbleTopMaterial.clone();
+        } else {
+          // Single material fallback
+          this.hoverHex.material = this.cobbleTopMaterial.clone();
+        }
         this.hoverHex = null;
       }
       return null;
@@ -235,7 +266,23 @@ class HexGrid {
 
     // Clear previous hover (but not if it's the selected hex)
     if (this.hoverHex && this.hoverHex !== this.selectedHex) {
-      this.hoverHex.material = this.defaultMaterial.clone();
+      if (Array.isArray(this.hoverHex.material)) {
+        // For multi-material meshes, restore texture to top face
+        this.hoverHex.material[0] = this.cobbleTopMaterial.clone();
+
+        // If this hex has a custom color, apply it
+        if (this.hoverHex.userData.customColor) {
+          this.hoverHex.material[0].color.set(this.hoverHex.userData.customColor);
+        }
+      } else {
+        // Single material fallback
+        this.hoverHex.material = this.cobbleTopMaterial.clone();
+
+        // If this hex has a custom color, apply it
+        if (this.hoverHex.userData.customColor) {
+          this.hoverHex.material.color.set(this.hoverHex.userData.customColor);
+        }
+      }
     }
 
     // Set new hover - but only on desktop
@@ -243,7 +290,24 @@ class HexGrid {
       const hex = intersects[0].object;
 
       if (hex !== this.selectedHex) {
-        hex.material = this.hoverMaterial.clone();
+        if (Array.isArray(hex.material)) {
+          // For multi-material meshes, apply hover color to top face
+          // Save current color first if needed
+          if (!hex.userData.customColor && hex.material[0].color) {
+            hex.userData.customColor = hex.material[0].color.clone();
+          }
+
+          // Apply hover color
+          hex.material[0].color.copy(this.hoverMaterial.color);
+        } else {
+          // Save current color first if needed
+          if (!hex.userData.customColor && hex.material.color) {
+            hex.userData.customColor = hex.material.color.clone();
+          }
+
+          // Apply hover material
+          hex.material = this.hoverMaterial.clone();
+        }
         this.hoverHex = hex;
       }
 
@@ -274,8 +338,23 @@ class HexGrid {
 
     // Clear previous selection visual (but maintain selected hex)
     if (this.selectedHex) {
-      // Restore default material to previous selection
-      this.selectedHex.material = this.defaultMaterial.clone();
+      if (Array.isArray(this.selectedHex.material)) {
+        // For multi-material meshes, restore texture to top face
+        this.selectedHex.material[0] = this.cobbleTopMaterial.clone();
+
+        // If this hex has a custom color, apply it
+        if (this.selectedHex.userData.customColor) {
+          this.selectedHex.material[0].color.set(this.selectedHex.userData.customColor);
+        }
+      } else {
+        // Single material fallback
+        this.selectedHex.material = this.cobbleTopMaterial.clone();
+
+        // If this hex has a custom color, apply it
+        if (this.selectedHex.userData.customColor) {
+          this.selectedHex.material.color.set(this.selectedHex.userData.customColor);
+        }
+      }
     }
 
     // If we clicked on a hex, select it
@@ -283,16 +362,28 @@ class HexGrid {
       const hex = intersects[0].object;
 
       // Apply selection material
-      hex.material = this.selectedMaterial.clone();
+      if (Array.isArray(hex.material)) {
+        // For multi-material meshes, set selection color on top face
+        // Save current color first if needed
+        if (!hex.userData.customColor && hex.material[0].color) {
+          hex.userData.customColor = hex.material[0].color.clone();
+        }
+
+        // Apply selection color
+        hex.material[0].color.copy(this.selectedMaterial.color);
+      } else {
+        // Save current color first if needed
+        if (!hex.userData.customColor && hex.material.color) {
+          hex.userData.customColor = hex.material.color.clone();
+        }
+
+        // Apply selection material
+        hex.material = this.selectedMaterial.clone();
+      }
       this.selectedHex = hex;
 
-      // // Spawn a sphere above the selected hex
-      // this.spawnSphereAboveHex(hex.userData.hexId);
-
-      // Add this:
+      // Create hex center marker
       this.createHexCenterMarker(hex.userData.hexId);
-
-      this.playAnimationOnHex(hex.userData.hexId);
 
       return {
         hexId: hex.userData.hexId,
@@ -340,15 +431,23 @@ class HexGrid {
     const currentHeight = hex.userData.height || 0.01;
 
     // Apply color change if specified
+    // In the updateHexState method, modify the color change section:
+    // Apply color change if specified
     if (state.color) {
-      // Create a new material to avoid modifying shared materials
-      const newMaterial = wasSelected ?
-        this.selectedMaterial.clone() :
-        (wasHover ? this.hoverMaterial.clone() : this.defaultMaterial.clone());
+      // With our new material setup, we need to handle multi-material objects
+      if (hex.material.length) {
+        // First material is the top face
+        const topMaterial = hex.material[0];
+        topMaterial.color.set(state.color);
+      } else {
+        // For flat hexes or fallbacks
+        const newMaterial = wasSelected ?
+          this.selectedMaterial.clone() :
+          (wasHover ? this.hoverMaterial.clone() : this.defaultMaterial.clone());
 
-      // Set the new color
-      newMaterial.color.set(state.color);
-      hex.material = newMaterial;
+        newMaterial.color.set(state.color);
+        hex.material = newMaterial;
+      }
     }
 
     // Handle voxel model data if present
@@ -406,7 +505,10 @@ class HexGrid {
     // Store selection state and material
     const wasSelected = hexMesh === this.selectedHex;
     const wasHover = hexMesh === this.hoverHex;
-    const currentMaterial = hexMesh.material.clone();
+
+    const currentColor = hexMesh.material && hexMesh.material.color ?
+      hexMesh.material.color.clone() :
+      new THREE.Color(0x3498db); // Fallback to default blue if no color available
 
     // Remove old mesh
     this.scene.remove(hexMesh);
@@ -435,8 +537,30 @@ class HexGrid {
     // Rotate to correct orientation (extrude along Y axis)
     geometry.rotateX(-Math.PI / 2);
 
-    // Create new mesh with the same material
-    const newMesh = new THREE.Mesh(geometry, currentMaterial);
+    // Create materials array for different faces
+    const sideMaterial = this.cobbleMaterial.clone();
+
+    // In the extrudeHex method, after creating the sideMaterial:
+    // Set texture repeat based on height for more of a "stacked blocks" look
+    // sideMaterial.map.repeat.set(1, Math.max(1, Math.floor(height)));
+
+    // Create top material (can be colored differently)
+    const topMaterial = this.cobbleTopMaterial.clone();
+
+    // If the hex was selected or hovered, tint the top material
+    if (wasSelected) {
+      topMaterial.color.set(this.selectedMaterial.color);
+    } else if (wasHover) {
+      topMaterial.color.set(this.hoverMaterial.color);
+    } else {
+      topMaterial.color.set(currentColor);
+    }
+
+    // Create materials array - index 0 is top face, index 1 is sides
+    const materials = [topMaterial, sideMaterial];
+
+    // Create mesh with material array
+    const newMesh = new THREE.Mesh(geometry, materials);
 
     // Copy user data, including height
     newMesh.userData = { q, r, hexId, height };
