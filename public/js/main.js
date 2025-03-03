@@ -34,7 +34,7 @@ class App {
       console.log('Socket manager initialized');
 
       // Initialize hex grid
-      this.hexGrid = new HexGrid(this.scene, 1, 10);
+      this.hexGrid = new HexGrid(this.scene, 1, 17);
       console.log('Hex grid initialized');
 
       // Connect components
@@ -49,6 +49,11 @@ class App {
       // Detect if we're on a mobile device
       this.isMobile = this.detectMobile();
       console.log('Mobile device detection:', this.isMobile ? 'Mobile' : 'Desktop');
+
+      // In App constructor, after other initializations
+      if (this.ui && typeof this.ui.initGameHUD === 'function') {
+        this.ui.initGameHUD();
+      }
 
       // Prevent default touch behavior (scrolling, pinch-zoom)
       this.preventDefaultTouchBehavior();
@@ -306,17 +311,34 @@ class App {
       this.socketManager.sendChatMessage(roomCode, message);
     });
 
-    // In connectComponents method in main.js
-    // Connect UI refresh button to model manager refresh
-    this.ui.setRefreshModelsCallback(() => {
+    // // In connectComponents method in main.js
+    // // Connect UI refresh button to model manager refresh
+    // this.ui.setRefreshModelsCallback(() => {
+    //   if (this.hexGrid && this.hexGrid.voxelModelManager) {
+    //     this.hexGrid.voxelModelManager.refreshModelList()
+    //       .then(models => {
+    //         this.ui.showToast(`Found ${models.length} models`, 'success');
+    //       })
+    //       .catch(err => {
+    //         this.ui.showToast('Failed to refresh models', 'error');
+    //       });
+    //   }
+    // });
+
+    // Instead, we can auto-refresh models when creating/joining a room:
+    this.socketManager.setRoomCreatedCallback((roomCode) => {
+      this.currentRoomCode = roomCode;
+      this.ui.updateRoomDisplay(roomCode);
+
+      // Update HexGrid with room code and socket manager
+      this.hexGrid.setRoomCode(roomCode);
+      this.hexGrid.setSocketManager(this.socketManager);
+
+      // Auto-refresh models when entering a room
       if (this.hexGrid && this.hexGrid.voxelModelManager) {
-        this.hexGrid.voxelModelManager.refreshModelList()
-          .then(models => {
-            this.ui.showToast(`Found ${models.length} models`, 'success');
-          })
-          .catch(err => {
-            this.ui.showToast('Failed to refresh models', 'error');
-          });
+        this.hexGrid.voxelModelManager.refreshModelList().catch(err => {
+          console.warn('Failed to auto-refresh models:', err);
+        });
       }
     });
 
@@ -578,7 +600,7 @@ class App {
 
       // Show a message
       if (this.ui && typeof this.ui.showToast === 'function') {
-        this.ui.showToast('Applying colorful tints...', 'success');
+        // this.ui.showToast('Applying colorful tints...', 'success');
       }
     } else {
       console.error('Tinting method not available');

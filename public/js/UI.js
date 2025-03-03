@@ -17,15 +17,6 @@ class UI {
     this.chatInput = document.getElementById('chat-input');
     this.sendChatBtn = document.getElementById('send-chat-btn');
 
-    // In UI.js constructor, add this element
-    this.refreshModelsBtn = document.createElement('button');
-    this.refreshModelsBtn.id = 'refresh-models-btn';
-    this.refreshModelsBtn.textContent = 'Refresh Models';
-    this.refreshModelsBtn.className = 'action-btn';
-    this.refreshModelsBtn.style.position = 'absolute';
-    this.refreshModelsBtn.style.bottom = '10px';
-    this.refreshModelsBtn.style.left = '10px';
-    document.getElementById('ui-overlay').appendChild(this.refreshModelsBtn);
 
 
     // State
@@ -91,11 +82,6 @@ class UI {
       if (this.onCreateRoom) this.onCreateRoom();
     });
 
-    // Add event listener
-    this.refreshModelsBtn.addEventListener('click', () => {
-      if (this.onRefreshModels) this.onRefreshModels();
-    });
-
     this.joinRoomBtn.addEventListener('click', () => {
       const roomCode = this.roomCodeInput.value.trim().toUpperCase();
       if (roomCode && this.onJoinRoom) {
@@ -130,6 +116,42 @@ class UI {
       if (e.key === 'Enter') {
         this.sendChatMessage();
         e.preventDefault(); // Prevent default to avoid line breaks in input
+      }
+    });
+  }
+
+  // Add to the UI constructor after other initialization
+  initGameHUD() {
+    // Create HUD container
+    this.hudContainer = document.createElement('div');
+    this.hudContainer.id = 'game-hud';
+    this.hudContainer.className = 'game-hud';
+
+    // Create controls indicator with minimal design
+    this.controlsIndicator = document.createElement('div');
+    this.controlsIndicator.className = 'hud-panel';
+    this.controlsIndicator.innerHTML = `
+      <div class="control-row"><span class="key">T</span> Generate Terrain</div>
+      <div class="control-row"><span class="key">Shift+T</span> Change Colors</div>
+      <div class="control-row"><span class="key">Shift+Click</span> Place Model</div>
+      <div class="control-row"><span class="key">A</span> Toggle Animations</div>
+      <div class="control-row"><span class="key">Scroll</span> Adjust Height</div>
+    `;
+
+    this.hudContainer.appendChild(this.controlsIndicator);
+
+    // Add HUD to the document
+    document.getElementById('ui-overlay').appendChild(this.hudContainer);
+
+    // Auto-hide HUD after 8 seconds
+    setTimeout(() => {
+      this.hudContainer.classList.add('hud-hidden');
+    }, 8000);
+
+    // Allow showing/hiding HUD with H key
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'h' || e.key === 'H') {
+        this.hudContainer.classList.toggle('hud-hidden');
       }
     });
   }

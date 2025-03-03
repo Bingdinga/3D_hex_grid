@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -7,7 +8,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <title>3D Hex Grid Space</title>
   <link rel="stylesheet" href="styles.css">
-  
+
   <!-- Import map for Three.js modules -->
   <script type="importmap">
   {
@@ -17,14 +18,15 @@
     }
   }
   </script>
-  
+
   <!-- Socket.io client (keep as regular script, it's not a module) -->
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
+
 <body>
   <div id="game-container">
     <div id="canvas-container"></div>
-    
+
     <div id="ui-overlay">
       <!-- Room info panel -->
       <div id="room-panel">
@@ -39,8 +41,13 @@
             <button id="join-room-btn">Join</button>
           </div>
         </div>
+        <div class="control-hint">
+          <span class="key-command">T</span> Terrain
+          <span class="key-command">Shift+T</span> Color
+          <span class="key-command">H</span> Help
+        </div>
       </div>
-      
+
       <!-- Chat interface -->
       <div id="chat-container" class="collapsed">
         <div id="chat-header">
@@ -54,9 +61,9 @@
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Load our main JavaScript module - it will import the others -->
-  <script type="module" src="js/main.js"></script>
+    <!-- Load our main JavaScript module - it will import the others -->
+    <script type="module" src="js/main.js"></script>
 </body>
+
 </html>

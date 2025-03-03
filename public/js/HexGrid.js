@@ -114,6 +114,7 @@ class HexGrid {
  * @param {string} roomCode - Current room code for syncing
  * @param {SocketManager} socketManager - Socket manager for syncing
  */
+  // In HexGrid.js - modify the generateTerrain method
   generateTerrain(scale = 0.1, amplitude = 3.0, octaves = 4, roomCode, socketManager) {
     // Skip if we're not in a room or don't have a socket manager
     if (!roomCode || !socketManager) {
@@ -125,6 +126,28 @@ class HexGrid {
 
     // Create noise generator with a random seed
     const noiseGen = new NoiseGenerator(Math.random() * 1000);
+
+    // Generate 1-2 random peak locations within grid bounds
+    const peakCount = 1 + Math.floor(Math.random() * 2); // 1 or 2 peaks
+    const peakPoints = [];
+    const gridRadius = this.radius * 1.5; // Adjust based on your grid size
+
+    for (let i = 0; i < peakCount; i++) {
+      // Generate peaks within the grid radius, but not at the very center
+      const angle = Math.random() * Math.PI * 2;
+      const distance = (0.3 + Math.random() * 0.5) * gridRadius; // Between 30-80% of grid radius
+
+      peakPoints.push({
+        x: Math.cos(angle) * distance,
+        y: Math.sin(angle) * distance
+      });
+    }
+
+    // Configure peak parameters
+    const peakHeight = 3.0 + Math.random() * 2.0; // Height between 3-5 units
+    const peakWidth = 3.0 + Math.random() * 2.0; // Width between 3-5 hex units
+
+    console.log(`Added ${peakCount} peaks with height ${peakHeight.toFixed(2)} and width ${peakWidth.toFixed(2)}`);
 
     // Process all hexes in batches to avoid freezing the UI
     const hexIds = Object.keys(this.hexMeshes);
@@ -139,12 +162,15 @@ class HexGrid {
         const hex = this.hexMeshes[hexId];
         const { q, r } = hex.userData;
 
-        // Generate height using noise
-        // Use q,r coordinates for noise input, scaled appropriately
+        // Generate base height using noise
         const noiseValue = noiseGen.fractalNoise(q * scale, r * scale, octaves);
 
-        // Calculate height based on noise (adding a small minimum height)
-        const height = 0.25 + noiseValue * amplitude;
+        // Calculate base height (adding a small minimum height)
+        let height = 0.25 + noiseValue * amplitude;
+
+        // Add peak influence (much taller areas)
+        const peakInfluence = noiseGen.createPeaks(q, r, peakPoints, peakHeight, peakWidth);
+        height += peakInfluence;
 
         // Round to nearest 0.25 for cleaner values
         const roundedHeight = Math.round(height * 4) / 4;
